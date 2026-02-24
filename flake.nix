@@ -26,7 +26,7 @@
               rust-analyzer
               rustfmt
               flip-link
-              probe-rs
+              probe-rs-tools
               elf2uf2-rs
             ];
           };
