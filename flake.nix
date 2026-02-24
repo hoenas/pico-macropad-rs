@@ -1,27 +1,36 @@
 {
-  description = "A very basic flake";
-
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.05";
+    flake-utils.url = "github:numtide/flake-utils";
+    rust-overlay.url = "github:oxalica/rust-overlay";
   };
-
-  outputs = { self, nixpkgs }: let 
-    pkgs = nixpkgs.legacyPackages."x86_64-linux"; 
-  in {
-
-    devShells.x86_64-linux.default = pkgs.mkShell {
-      buildInputs = with pkgs; [
-        cargo
-        rustc
-        rustfmt
-        clippy
-        rust-analyzer
-        elf2uf2-rs
-      ];
-
-      nativeBuildInpouts = [ pkgs.pkg-config ];
-
-      env.RUST_SRC_PATH = "${pkgs.rust.packages.stable.rustPlatform.rustLibSrc}";
-    };
-  };
+  outputs = { self, nixpkgs, flake-utils, rust-overlay }:
+    flake-utils.lib.eachDefaultSystem
+      (system:
+        let
+          overlays = [ (import rust-overlay) ];
+          pkgs = import nixpkgs {
+            inherit system overlays;
+          };
+        in
+        with pkgs;
+        {
+          devShells.default = mkShell {
+            buildInputs = with pkgs; [
+              (rust-bin.stable.latest.default.override {
+                extensions = [ "rust-src" ];
+                targets = [ "thumbv6m-none-eabi" ];
+              })
+            ] ++  [
+              openocd
+              rust-analyzer
+              rustfmt
+              probe-run
+              flip-link
+              probe-rs
+              elf2uf2-rs
+            ];
+          };
+        }
+      );
 }
