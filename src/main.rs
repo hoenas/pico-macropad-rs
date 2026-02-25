@@ -13,12 +13,14 @@ mod app {
         XOSC_CRYSTAL_FREQ,
     };
 
-    const SCAN_TIME_US: MicrosDurationU32 = MicrosDurationU32::secs(1);
+    const DISPLAY_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(50);
+    const ROTARY_ENCODER_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(1);
 
     #[shared]
     struct Shared {
         timer: hal::Timer,
-        alarm: hal::timer::Alarm0,
+        display_alarm: hal::timer::Alarm0,
+        rotary_encoder_alarm: hal::timer::Alarm1,
         led: hal::gpio::Pin<
             hal::gpio::bank0::Gpio25,
             hal::gpio::FunctionSioOutput,
@@ -60,32 +62,61 @@ mod app {
         let mut led = pins.led.reconfigure();
         led.set_low().unwrap();
 
+        // Display update
         let mut timer = hal::Timer::new(c.device.TIMER, &mut resets, &clocks);
-        let mut alarm = timer.alarm_0().unwrap();
-        let _ = alarm.schedule(SCAN_TIME_US);
-        alarm.enable_interrupt();
+        let mut display_alarm = timer.alarm_0().unwrap();
+        let _ = display_alarm.schedule(DISPLAY_UPDATE);
+        display_alarm.enable_interrupt();
 
-        (Shared { timer, alarm, led }, Local {}, init::Monotonics())
+        // Rotary encoder update
+        // let mut timer = hal::Timer::new(c.device.TIMER, &mut resets, &clocks);
+        let mut rotary_encoder_alarm = timer.alarm_1().unwrap();
+        let _ = rotary_encoder_alarm.schedule(ROTARY_ENCODER_UPDATE);
+        rotary_encoder_alarm.enable_interrupt();
+
+        (
+            Shared {
+                timer,
+                display_alarm,
+                rotary_encoder_alarm,
+                led,
+            },
+            Local {},
+            init::Monotonics(),
+        )
     }
 
     #[task(
         binds = TIMER_IRQ_0,
         priority = 1,
-        shared = [timer, alarm, led],
+        shared = [timer, display_alarm, led],
         local = [tog: bool = true],
     )]
-    fn timer_irq(mut c: timer_irq::Context) {
-        if *c.local.tog {
-            c.shared.led.lock(|l| l.set_high().unwrap());
-        } else {
-            c.shared.led.lock(|l| l.set_low().unwrap());
-        }
-        *c.local.tog = !*c.local.tog;
+    fn display_update(mut c: display_update::Context) {
+        c.shared.led.lock(|l| l.set_high().unwrap());
 
-        let mut alarm = c.shared.alarm;
+        let mut alarm = c.shared.display_alarm;
         (alarm).lock(|a| {
             a.clear_interrupt();
-            let _ = a.schedule(SCAN_TIME_US);
+            let _ = a.schedule(DISPLAY_UPDATE);
+        });
+    }
+
+    #[task(
+        binds = TIMER_IRQ_1,
+        priority = 1,
+        shared = [timer, rotary_encoder_alarm, led],
+        local = [tog: bool = true],
+    )]
+    fn rotary_encoder_update(mut c: rotary_encoder_update::Context) {
+        c.shared.led.lock(|l| l.set_low().unwrap());
+
+        *c.local.tog = !*c.local.tog;
+
+        let mut alarm = c.shared.rotary_encoder_alarm;
+        (alarm).lock(|a| {
+            a.clear_interrupt();
+            let _ = a.schedule(DISPLAY_UPDATE);
         });
     }
 }
