@@ -34,6 +34,7 @@ panic-halt = "1.0.0"
 ws2812-pio = "0.9.0"
 i2c-pio = "0.9.0"
 rp2040-boot2 = "0.3.0"
+ws2812-spi = "0.5.1"
 
 # but you can use any BSP. Uncomment this to use the pro_micro_rp2040 BSP instead
 # sparkfun-pro-micro-rp2040 = "0.8"

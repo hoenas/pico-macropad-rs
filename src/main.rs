@@ -5,19 +5,60 @@ use panic_halt as _;
 
 #[rtic::app(device = rp_pico::hal::pac, peripherals = true)]
 mod app {
+    use embedded_hal::digital::StatefulOutputPin;
+    use fugit::MicrosDurationU32;
+    use rp_pico::XOSC_CRYSTAL_FREQ;
+    // The macro for our start-up function
+    use rp_pico::entry;
+
+    // info!() and error!() macros for printing information to the debug output
+    use defmt::*;
+    use defmt_rtt as _;
+
+    // Ensure we halt the program on panic (if we don't mention this crate it won't
+    // be linked)
+    use panic_halt as _;
+
+    use rp_pico::hal::clocks::init_clocks_and_plls;
+    use rp_pico::hal::Sio;
+    use rp_pico::hal::Watchdog;
+    // Pull in any important traits
+    use rp_pico::hal::prelude::*;
+
+    // Embed the `Hz` function/trait:
+    use fugit::RateExtU32;
+
+    // A shorter alias for the Peripheral Access Crate, which provides low-level
+    // register access
+    use rp_pico::hal::pac;
+
+    // Import the SPI abstraction:
+    use rp_pico::hal::spi;
+
+    // Import the GPIO abstraction:
+    use rp_pico::hal::gpio;
+
+    // A shorter alias for the Hardware Abstraction Layer, which provides
+    // higher-level drivers.
+    use rp_pico::hal;
+
+    // Link in the embedded_sdmmc crate.
+    // The `SdMmcSpi` is used for block level access to the card.
+    // And the `VolumeManager` gives access to the FAT filesystem functions.
+    use embedded_sdmmc::{SdCard, TimeSource, Timestamp, VolumeIdx, VolumeManager};
+
+    // Get the file open mode enum:
+    use embedded_sdmmc::filesystem::Mode;
+
+    use embedded_hal::delay::DelayNs;
     use embedded_hal::digital::OutputPin;
-    use embedded_sdmmc::{Mode, SdCard, VolumeIdx, VolumeManager};
-    use fugit::{MicrosDurationU32, RateExtU32};
+    use rp_pico::hal::Timer;
+
     use rotary_encoder_hal::Rotary;
-    use rp_pico::hal::{prelude::*, Timer};
-    use rp_pico::{
-        hal::{
-            self, clocks::init_clocks_and_plls, gpio, pac, spi, timer::Alarm, watchdog::Watchdog,
-            Sio,
-        },
-        XOSC_CRYSTAL_FREQ,
-    };
+    use rp_pico::hal::timer::Alarm;
     use sh1106::{mode::GraphicsMode, Builder};
+    use smart_leds::{SmartLedsWrite, White, RGBW};
+    use ws2812_spi::Ws2812;
 
     const DISPLAY_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(50);
     const ROTARY_ENCODER_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(1);
@@ -69,7 +110,7 @@ mod app {
         // Pin setup
         // Onboard LED
         let mut led = pins.led.reconfigure();
-        led.set_low().unwrap();
+        led.is_set_low().unwrap();
         // Buttons
         let mut button0 = pins.gpio0;
         let mut button1 = pins.gpio1;
@@ -110,23 +151,45 @@ mod app {
 
         // SDCard
         // - Set up our SPI pins into the correct mode
-        let spi_sclk: gpio::Pin<_, gpio::FunctionSpi, gpio::PullNone> = pins.gpio18.reconfigure();
-        let spi_mosi: gpio::Pin<_, gpio::FunctionSpi, gpio::PullNone> = pins.gpio19.reconfigure();
-        let spi_miso: gpio::Pin<_, gpio::FunctionSpi, gpio::PullUp> = pins.gpio20.reconfigure();
-        let spi_cs = pins.gpio21.into_push_pull_output();
-
+        let sdmmc_spi_sclk: gpio::Pin<_, gpio::FunctionSpi, gpio::PullNone> =
+            pins.gpio18.reconfigure();
+        let sdmmc_spi_mosi: gpio::Pin<_, gpio::FunctionSpi, gpio::PullNone> =
+            pins.gpio19.reconfigure();
+        let sdmmc_spi_miso: gpio::Pin<_, gpio::FunctionSpi, gpio::PullUp> =
+            pins.gpio20.reconfigure();
+        let sdmmc_spi_cs = pins.gpio21.into_push_pull_output();
         // - Create the SPI driver instance for the SPI0 device
-        let spi = spi::Spi::<_, _, _, 8>::new(pac.SPI0, (spi_mosi, spi_miso, spi_sclk));
+        let spi0 =
+            spi::Spi::<_, _, _, 8>::new(pac.SPI0, (sdmmc_spi_mosi, sdmmc_spi_miso, sdmmc_spi_sclk));
 
         // - Exchange the uninitialised SPI driver for an initialised one
-        let sdmmc_spi = spi.init(
+        let sdmmc_spi = spi0.init(
             &mut pac.RESETS,
             clocks.peripheral_clock.freq(),
             400.kHz(), // card initialization happens at low baud rate
             embedded_hal::spi::MODE_0,
         );
         let mut delay = Timer::new(pac.TIMER, &mut pac.RESETS, &clocks);
-        let sdcard = SdCard::new(sdmmc_spi, delay);
+        let sdcard = SdCard::new(sdmmc_spi, sdmmc_spi_cs, delay);
+        // - RGB LED
+        let rgb_led_spi_sclk: gpio::Pin<_, gpio::FunctionSpi, gpio::PullNone> =
+            pins.gpio26.reconfigure();
+        let rgb_led_spi_mosi: gpio::Pin<_, gpio::FunctionSpi, gpio::PullNone> =
+            pins.gpio27.reconfigure();
+        let rgb_led_spi_miso: gpio::Pin<_, gpio::FunctionSpi, gpio::PullUp> =
+            pins.gpio28.reconfigure();
+        let spi1 = spi::Spi::<_, _, _, 8>::new(
+            pac.SPI1,
+            (rgb_led_spi_mosi, rgb_led_spi_miso, rgb_led_spi_sclk),
+        );
+        let rgb_led_spi = spi1.init(
+            &mut pac.RESETS,
+            clocks.peripheral_clock.freq(),
+            3_000_000u32.Hz(),
+            embedded_hal::spi::MODE_0,
+        );
+
+        let mut ws = Ws2812::new_sk6812w(rgb_led_spi);
 
         // Timers
         // - Display update
