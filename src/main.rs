@@ -132,15 +132,15 @@ mod app {
             &mut pins.gpio13.into_pull_up_input(),
             &mut pins.gpio14.into_pull_up_input(),
         );
-        let mut rotary_encoder_2_button = pins.gpio28;
+        let mut rotary_encoder_2_button = pins.gpio22;
         // GPIO15 is "DO NOT USE"
         // Display
         let display_sda_pin: hal::gpio::Pin<_, hal::gpio::FunctionI2C, _> =
-            pins.gpio26.reconfigure();
+            pins.gpio16.reconfigure();
         let display_scl_pin: hal::gpio::Pin<_, hal::gpio::FunctionI2C, _> =
-            pins.gpio27.reconfigure();
-        let display_i2c = hal::I2C::i2c1(
-            pac.I2C1,
+            pins.gpio17.reconfigure();
+        let display_i2c = hal::I2C::i2c0(
+            pac.I2C0,
             display_sda_pin,
             display_scl_pin,
             400.kHz(),
@@ -170,7 +170,7 @@ mod app {
             embedded_hal::spi::MODE_0,
         );
         let mut delay = Timer::new(pac.TIMER, &mut pac.RESETS, &clocks);
-        let sdcard = SdCard::new(sdmmc_spi, sdmmc_spi_cs, delay);
+        // let mut volume_mgr = VolumeManager::new(sdcard, DummyTimesource::default());
         // - RGB LED
         let rgb_led_spi_sclk: gpio::Pin<_, gpio::FunctionSpi, gpio::PullNone> =
             pins.gpio26.reconfigure();
