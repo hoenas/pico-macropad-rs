@@ -58,7 +58,7 @@ mod app {
     use rotary_encoder_hal::Rotary;
     use rp_pico::hal::timer::Alarm;
     use sh1106::{mode::GraphicsMode, Builder};
-    // use ws2812_pio::Ws2812;
+    use ws2812_pio::Ws2812;
 
     const DISPLAY_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(50);
     const ROTARY_ENCODER_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(1);
@@ -201,14 +201,14 @@ mod app {
         let mut volume_mgr = VolumeManager::new(sdcard, DummyTimesource::default());
 
         // - RGB LED
-        // let (mut pio, sm0, _, _, _) = pac.PIO0.split(&mut pac.RESETS);
-        // let mut rgb_led = Ws2812::new(
-        //     pins.gpio28.into_function(),
-        //     &mut pio,
-        //     sm0,
-        //     clocks.peripheral_clock.freq(),
-        //     delay.count_down(),
-        // );
+        let (mut pio, sm0, _, _, _) = pac.PIO0.split(&mut pac.RESETS);
+        let mut rgb_led = Ws2812::new(
+            pins.gpio28.into_function(),
+            &mut pio,
+            sm0,
+            clocks.peripheral_clock.freq(),
+            delay.count_down(),
+        );
 
         // Timers
         // - Display update
