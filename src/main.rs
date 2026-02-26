@@ -6,6 +6,7 @@ use panic_halt as _;
 #[rtic::app(device = rp_pico::hal::pac, peripherals = true)]
 mod app {
     use embedded_hal::digital::StatefulOutputPin;
+    use embedded_sdmmc::sdcard;
     use fugit::MicrosDurationU32;
     use rp_pico::XOSC_CRYSTAL_FREQ;
     // The macro for our start-up function
@@ -57,11 +58,29 @@ mod app {
     use rotary_encoder_hal::Rotary;
     use rp_pico::hal::timer::Alarm;
     use sh1106::{mode::GraphicsMode, Builder};
-    use smart_leds::{SmartLedsWrite, White, RGBW};
-    use ws2812_spi::Ws2812;
+    use ws2812_pio::Ws2812;
 
     const DISPLAY_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(50);
     const ROTARY_ENCODER_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(1);
+
+    /// A dummy timesource, which is mostly important for creating files.
+    #[derive(Default)]
+    pub struct DummyTimesource();
+
+    impl TimeSource for DummyTimesource {
+        // In theory you could use the RTC of the rp2040 here, if you had
+        // any external time synchronizing device.
+        fn get_timestamp(&self) -> Timestamp {
+            Timestamp {
+                year_since_1970: 0,
+                zero_indexed_month: 0,
+                zero_indexed_day: 0,
+                hours: 0,
+                minutes: 0,
+                seconds: 0,
+            }
+        }
+    }
 
     #[shared]
     struct Shared {
@@ -112,35 +131,43 @@ mod app {
         let mut led = pins.led.reconfigure();
         led.is_set_low().unwrap();
         // Buttons
-        let mut button0 = pins.gpio0;
-        let mut button1 = pins.gpio1;
-        let mut button2 = pins.gpio2;
-        let mut button3 = pins.gpio3;
-        let mut button4 = pins.gpio4;
-        let mut button5 = pins.gpio5;
-        let mut button6 = pins.gpio6;
-        let mut button7 = pins.gpio7;
-        let mut button8 = pins.gpio8;
-        let mut button9 = pins.gpio9;
+        let mut button0 = pins.gpio0.into_pull_up_input();
+        let mut button1 = pins.gpio1.into_pull_up_input();
+        let mut button2 = pins.gpio2.into_pull_up_input();
+        let mut button3 = pins.gpio3.into_pull_up_input();
+        let mut button4 = pins.gpio4.into_pull_up_input();
+        let mut button5 = pins.gpio5.into_pull_up_input();
+        let mut button6 = pins.gpio6.into_pull_up_input();
+        let mut button7 = pins.gpio7.into_pull_up_input();
+        let mut button8 = pins.gpio8.into_pull_up_input();
+        let mut button9 = pins.gpio9.into_pull_up_input();
         // Rotary encoders
+        // - Encoder 1
         let mut rotary_encoder1 = Rotary::new(
             &mut pins.gpio10.into_pull_up_input(),
             &mut pins.gpio11.into_pull_up_input(),
         );
         let mut rotary_encoder_1_button = pins.gpio12;
+        // - Encoder 2
         let mut rotary_encoder2 = Rotary::new(
             &mut pins.gpio13.into_pull_up_input(),
             &mut pins.gpio14.into_pull_up_input(),
         );
-        let mut rotary_encoder_2_button = pins.gpio22;
+        let mut rotary_encoder_2_button = pins.gpio15;
+        // - Encoder 3
+        let mut rotary_encoder3 = Rotary::new(
+            &mut pins.gpio16.into_pull_up_input(),
+            &mut pins.gpio17.into_pull_up_input(),
+        );
+        let mut rotary_encoder_3_button = pins.gpio22;
         // GPIO15 is "DO NOT USE"
         // Display
         let display_sda_pin: hal::gpio::Pin<_, hal::gpio::FunctionI2C, _> =
-            pins.gpio16.reconfigure();
+            pins.gpio26.reconfigure();
         let display_scl_pin: hal::gpio::Pin<_, hal::gpio::FunctionI2C, _> =
-            pins.gpio17.reconfigure();
-        let display_i2c = hal::I2C::i2c0(
-            pac.I2C0,
+            pins.gpio27.reconfigure();
+        let display_i2c = hal::I2C::i2c1(
+            pac.I2C1,
             display_sda_pin,
             display_scl_pin,
             400.kHz(),
@@ -159,37 +186,29 @@ mod app {
             pins.gpio20.reconfigure();
         let sdmmc_spi_cs = pins.gpio21.into_push_pull_output();
         // - Create the SPI driver instance for the SPI0 device
-        let spi0 =
+        let mut spi0 =
             spi::Spi::<_, _, _, 8>::new(pac.SPI0, (sdmmc_spi_mosi, sdmmc_spi_miso, sdmmc_spi_sclk));
 
         // - Exchange the uninitialised SPI driver for an initialised one
-        let sdmmc_spi = spi0.init(
+        let mut sdmmc_spi = spi0.init(
             &mut pac.RESETS,
             clocks.peripheral_clock.freq(),
             400.kHz(), // card initialization happens at low baud rate
             embedded_hal::spi::MODE_0,
         );
         let mut delay = Timer::new(pac.TIMER, &mut pac.RESETS, &clocks);
-        // let mut volume_mgr = VolumeManager::new(sdcard, DummyTimesource::default());
-        // - RGB LED
-        let rgb_led_spi_sclk: gpio::Pin<_, gpio::FunctionSpi, gpio::PullNone> =
-            pins.gpio26.reconfigure();
-        let rgb_led_spi_mosi: gpio::Pin<_, gpio::FunctionSpi, gpio::PullNone> =
-            pins.gpio27.reconfigure();
-        let rgb_led_spi_miso: gpio::Pin<_, gpio::FunctionSpi, gpio::PullUp> =
-            pins.gpio28.reconfigure();
-        let spi1 = spi::Spi::<_, _, _, 8>::new(
-            pac.SPI1,
-            (rgb_led_spi_mosi, rgb_led_spi_miso, rgb_led_spi_sclk),
-        );
-        let rgb_led_spi = spi1.init(
-            &mut pac.RESETS,
-            clocks.peripheral_clock.freq(),
-            3_000_000u32.Hz(),
-            embedded_hal::spi::MODE_0,
-        );
+        let sdcard = SdCard::new(sdmmc_spi, sdmmc_spi_cs, delay);
+        let mut volume_mgr = VolumeManager::new(sdcard, DummyTimesource::default());
 
-        let mut ws = Ws2812::new_sk6812w(rgb_led_spi);
+        // - RGB LED
+        // let (mut pio, sm0, _, _, _) = pac.PIO0.split(&mut pac.RESETS);
+        // let mut rgb_led = Ws2812::new(
+        //     pins.gpio28.into_function(),
+        //     &mut pio,
+        //     sm0,
+        //     clocks.peripheral_clock.freq(),
+        //     delay.count_down(),
+        // );
 
         // Timers
         // - Display update
