@@ -58,7 +58,7 @@ mod app {
     use rotary_encoder_hal::Rotary;
     use rp_pico::hal::timer::Alarm;
     use sh1106::{mode::GraphicsMode, Builder};
-    use ws2812_pio::Ws2812;
+    // use ws2812_pio::Ws2812;
 
     const DISPLAY_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(50);
     const ROTARY_ENCODER_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(1);
