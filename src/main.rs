@@ -22,6 +22,7 @@ mod app {
     use panic_halt as _;
 
     use hal::gpio::Pin;
+    use rp2040_hal::gpio::FunctionPio0;
     use rp2040_hal::gpio::Interrupt::{EdgeHigh, EdgeLow};
     use rp_pico::hal::clocks::init_clocks_and_plls;
     use rp_pico::hal::gpio::bank0::*;
@@ -36,6 +37,7 @@ mod app {
     use rp_pico::hal::Sio;
     use rp_pico::hal::Watchdog;
     use rp_pico::hal::I2C;
+    use rp_pico::pac::PIO0;
     // Pull in any important traits
     use rp_pico::hal::prelude::*;
 
@@ -64,6 +66,8 @@ mod app {
 
     use embedded_graphics::{pixelcolor::BinaryColor, prelude::*};
     use rotary_encoder_hal::{Direction, Rotary};
+    use rp2040_hal::pio::SM0;
+    use rp2040_hal::timer::CountDown;
     use rp_pico::hal::timer::Alarm;
     use rp_pico::pac::I2C1;
     use sh1106::{prelude::*, Builder};
@@ -72,7 +76,8 @@ mod app {
     use ws2812_pio::Ws2812;
 
     const DISPLAY_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(50);
-
+    const RGB_LEDS_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(25);
+    const NUM_LEDS: usize = 7;
     /// A dummy timesource, which is mostly important for creating files.
     #[derive(Default)]
     pub struct DummyTimesource();
@@ -96,6 +101,7 @@ mod app {
     struct Shared {
         timer: hal::Timer,
         display_alarm: hal::timer::Alarm0,
+        rgb_leds_alarm: hal::timer::Alarm1,
         led: Pin<Gpio25, FunctionSioOutput, PullNone>,
         rotary_encoder1: Rotary<
             Pin<Gpio10, FunctionSio<SioInput>, PullNone>,
@@ -129,6 +135,7 @@ mod app {
                 >,
             >,
         >,
+        rgb_leds: Ws2812<PIO0, SM0, CountDown, Pin<Gpio28, FunctionPio0, PullDown>>,
     }
 
     #[local]
@@ -222,6 +229,9 @@ mod app {
             &clocks.peripheral_clock,
         );
         let mut display: GraphicsMode<_> = Builder::new().connect_i2c(display_i2c).into();
+        display.init().unwrap();
+        display.clear();
+        display.flush();
 
         // SDCard
         // - Set up our SPI pins into the correct mode
@@ -249,9 +259,9 @@ mod app {
         let sdcard = SdCard::new(sdmmc_spi, sdmmc_spi_cs, timer);
         let mut volume_mgr = VolumeManager::new(sdcard, DummyTimesource::default());
 
-        // - RGB LED
+        // - RGB LEDs
         let (mut pio, sm0, _, _, _) = c.device.PIO0.split(&mut resets);
-        let mut rgb_led = Ws2812::new(
+        let mut rgb_leds = Ws2812::new(
             pins.gpio28.into_function(),
             &mut pio,
             sm0,
@@ -262,15 +272,17 @@ mod app {
         // Timer for display update
         let mut display_alarm = timer.alarm_0().unwrap();
         let _ = display_alarm.schedule(DISPLAY_UPDATE);
-        display.init().unwrap();
-        display.clear();
-        display.flush();
         display_alarm.enable_interrupt();
+        // Timer for RGB LED update
+        let mut rgb_leds_alarm = timer.alarm_1().unwrap();
+        let _ = rgb_leds_alarm.schedule(RGB_LEDS_UPDATE);
+        rgb_leds_alarm.enable_interrupt();
 
         (
             Shared {
                 timer,
                 display_alarm,
+                rgb_leds_alarm,
                 led,
                 rotary_encoder1,
                 rotary_encoder1_switch,
@@ -282,6 +294,7 @@ mod app {
                 rotary_encoder3_switch,
                 rotary_encoder3_value: 0,
                 display,
+                rgb_leds,
             },
             Local {},
             init::Monotonics(),
@@ -297,20 +310,34 @@ mod app {
     fn display_update(mut c: display_update::Context) {
         c.shared.led.lock(|l| l.set_high().unwrap());
         let mut rotary1_value = 0;
+        let mut rotary2_value = 0;
         c.shared
             .rotary_encoder1_value
             .lock(|value| rotary1_value = *value);
-        let pixel_value: u32 = if 64 + rotary1_value > 127 {
+        c.shared
+            .rotary_encoder2_value
+            .lock(|value| rotary2_value = *value);
+        let pixel_value_x: u32 = if 64 + rotary1_value > 127 {
             127
         } else if 64 + rotary1_value < 0 {
             0
         } else {
             (64 + rotary1_value) as u32
         };
+        c.shared
+            .rotary_encoder2_value
+            .lock(|value| rotary2_value = *value);
+        let pixel_value_y: u32 = if 32 + rotary2_value > 127 {
+            63
+        } else if 32 + rotary2_value < 0 {
+            0
+        } else {
+            (64 + rotary2_value) as u32
+        };
         c.shared.display.lock(|display| {
             // Draw on pixel to make sure the display is working
             display.clear();
-            display.set_pixel(pixel_value, 20, 1);
+            display.set_pixel(pixel_value_x, pixel_value_y, 1);
             display.flush().unwrap();
         });
 
@@ -318,6 +345,26 @@ mod app {
         (alarm).lock(|a| {
             a.clear_interrupt();
             let _ = a.schedule(DISPLAY_UPDATE);
+        });
+    }
+
+    #[task(
+        binds = TIMER_IRQ_1,
+        priority = 4,
+        shared = [timer, rgb_leds_alarm, rgb_leds],
+        local = [tog: bool = true],
+    )]
+    fn leds_update(mut c: leds_update::Context) {
+        c.shared.rgb_leds.lock(|rgb_leds| {
+            // Draw on pixel to make sure the display is working
+            let mut data: [RGB8; NUM_LEDS] = [RGB8::default(); NUM_LEDS];
+            rgb_leds.write(data.iter().cloned());
+        });
+
+        let mut alarm = c.shared.rgb_leds_alarm;
+        (alarm).lock(|a| {
+            a.clear_interrupt();
+            let _ = a.schedule(RGB_LEDS_UPDATE);
         });
     }
 
