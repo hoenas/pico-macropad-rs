@@ -5,11 +5,12 @@ use panic_halt as _;
 
 #[rtic::app(device = rp_pico::hal::pac, peripherals = true)]
 mod app {
+    use core::f32::consts::PI;
+
     use embedded_hal::digital::StatefulOutputPin;
     use embedded_sdmmc::sdcard;
     use fugit::MicrosDurationU32;
     use rotary_encoder_hal::DefaultPhase;
-    use rotary_encoder_hal::Direction;
     use rp_pico::XOSC_CRYSTAL_FREQ;
     // The macro for our start-up function
     use rp_pico::entry;
@@ -75,6 +76,8 @@ mod app {
     use smart_leds::SmartLedsWrite;
     use smart_leds::RGB8;
     use ws2812_pio::Ws2812;
+
+    use libm::sin;
 
     const DISPLAY_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(50);
     const RGB_LEDS_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(25);
@@ -262,7 +265,7 @@ mod app {
 
         // - RGB LEDs
         let (mut pio, sm0, _, _, _) = c.device.PIO0.split(&mut resets);
-        let rgb_leds = Ws2812::new(
+        let mut rgb_leds = Ws2812::new(
             pins.gpio28.into_function(),
             &mut pio,
             sm0,
@@ -352,13 +355,19 @@ mod app {
     #[task(
         binds = TIMER_IRQ_1,
         priority = 4,
-        shared = [timer, rgb_leds_alarm, rgb_leds],
-        local = [tog: bool = true],
+        shared = [timer, rgb_leds_alarm, rgb_leds, ],
+        local = [tog: bool = true, animation_counter: usize = 0],
     )]
     fn leds_update(mut c: leds_update::Context) {
+        *c.local.animation_counter += 1;
+        let counter = c.local.animation_counter;
+
         c.shared.rgb_leds.lock(|rgb_leds| {
-            // Draw on pixel to make sure the display is working
+            // Write RGB values
             let mut data: [RGB8; NUM_LEDS] = [RGB8::default(); NUM_LEDS];
+            for i in 0..data.len() {
+                data[i] = RGB8::new(50, 0, 50);
+            }
             rgb_leds.write(data.iter().cloned());
         });
 
