@@ -29,10 +29,6 @@ mod app {
     // Embed the `Hz` function/trait:
     use fugit::RateExtU32;
 
-    // A shorter alias for the Peripheral Access Crate, which provides low-level
-    // register access
-    use rp_pico::hal::pac;
-
     // Import the SPI abstraction:
     use rp_pico::hal::spi;
 
@@ -98,13 +94,12 @@ mod app {
     struct Local {}
 
     #[init]
-    fn init(c: init::Context) -> (Shared, Local, init::Monotonics) {
+    fn init(mut c: init::Context) -> (Shared, Local, init::Monotonics) {
         // Soft-reset does not release the hardware spinlocks
         // Release them now to avoid a deadlock after debug or watchdog reset
         unsafe {
             hal::sio::spinlock_reset();
         }
-        let mut pac = pac::Peripherals::take().unwrap();
         let mut resets = c.device.RESETS;
         let mut watchdog = Watchdog::new(c.device.WATCHDOG);
         let clocks = init_clocks_and_plls(
@@ -166,11 +161,11 @@ mod app {
         let display_scl_pin: hal::gpio::Pin<_, hal::gpio::FunctionI2C, _> =
             pins.gpio27.reconfigure();
         let display_i2c = hal::I2C::i2c1(
-            pac.I2C1,
+            c.device.I2C1,
             display_sda_pin,
             display_scl_pin,
             400.kHz(),
-            &mut pac.RESETS,
+            &mut resets,
             &clocks.peripheral_clock,
         );
         let mut display: GraphicsMode<_> = Builder::new().connect_i2c(display_i2c).into();
@@ -185,33 +180,34 @@ mod app {
             pins.gpio16.reconfigure();
         let sdmmc_spi_cs = pins.gpio17.into_push_pull_output();
         // - Create the SPI driver instance for the SPI0 device
-        let mut spi0 =
-            spi::Spi::<_, _, _, 8>::new(pac.SPI0, (sdmmc_spi_mosi, sdmmc_spi_miso, sdmmc_spi_sclk));
+        let mut spi0 = spi::Spi::<_, _, _, 8>::new(
+            c.device.SPI0,
+            (sdmmc_spi_mosi, sdmmc_spi_miso, sdmmc_spi_sclk),
+        );
 
         // - Exchange the uninitialised SPI driver for an initialised one
         let mut sdmmc_spi = spi0.init(
-            &mut pac.RESETS,
+            &mut resets,
             clocks.peripheral_clock.freq(),
             400.kHz(), // card initialization happens at low baud rate
             embedded_hal::spi::MODE_0,
         );
-        let mut delay = Timer::new(pac.TIMER, &mut pac.RESETS, &clocks);
-        let sdcard = SdCard::new(sdmmc_spi, sdmmc_spi_cs, delay);
+        let mut timer = Timer::new(c.device.TIMER, &mut resets, &clocks);
+        let sdcard = SdCard::new(sdmmc_spi, sdmmc_spi_cs, timer);
         let mut volume_mgr = VolumeManager::new(sdcard, DummyTimesource::default());
 
         // - RGB LED
-        let (mut pio, sm0, _, _, _) = pac.PIO0.split(&mut pac.RESETS);
+        let (mut pio, sm0, _, _, _) = c.device.PIO0.split(&mut resets);
         let mut rgb_led = Ws2812::new(
             pins.gpio28.into_function(),
             &mut pio,
             sm0,
             clocks.peripheral_clock.freq(),
-            delay.count_down(),
+            timer.count_down(),
         );
 
         // Timers
         // - Display update
-        let mut timer = hal::Timer::new(c.device.TIMER, &mut resets, &clocks);
         let mut display_alarm = timer.alarm_0().unwrap();
         let _ = display_alarm.schedule(DISPLAY_UPDATE);
         display_alarm.enable_interrupt();
