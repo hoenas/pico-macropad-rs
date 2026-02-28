@@ -156,11 +156,10 @@ mod app {
         let mut rotary_encoder_2_button = pins.gpio15;
         // - Encoder 3
         let mut rotary_encoder3 = Rotary::new(
-            &mut pins.gpio16.into_pull_up_input(),
-            &mut pins.gpio17.into_pull_up_input(),
+            &mut pins.gpio20.into_pull_up_input(),
+            &mut pins.gpio21.into_pull_up_input(),
         );
         let mut rotary_encoder_3_button = pins.gpio22;
-        // GPIO15 is "DO NOT USE"
         // Display
         let display_sda_pin: hal::gpio::Pin<_, hal::gpio::FunctionI2C, _> =
             pins.gpio26.reconfigure();
@@ -183,8 +182,8 @@ mod app {
         let sdmmc_spi_mosi: gpio::Pin<_, gpio::FunctionSpi, gpio::PullNone> =
             pins.gpio19.reconfigure();
         let sdmmc_spi_miso: gpio::Pin<_, gpio::FunctionSpi, gpio::PullUp> =
-            pins.gpio20.reconfigure();
-        let sdmmc_spi_cs = pins.gpio21.into_push_pull_output();
+            pins.gpio16.reconfigure();
+        let sdmmc_spi_cs = pins.gpio17.into_push_pull_output();
         // - Create the SPI driver instance for the SPI0 device
         let mut spi0 =
             spi::Spi::<_, _, _, 8>::new(pac.SPI0, (sdmmc_spi_mosi, sdmmc_spi_miso, sdmmc_spi_sclk));
