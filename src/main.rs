@@ -22,6 +22,7 @@ mod app {
     use panic_halt as _;
 
     use hal::gpio::Pin;
+    use rp2040_hal::gpio::Interrupt::{EdgeHigh, EdgeLow};
     use rp_pico::hal::clocks::init_clocks_and_plls;
     use rp_pico::hal::gpio::bank0::*;
     use rp_pico::hal::gpio::FunctionI2c;
@@ -71,7 +72,6 @@ mod app {
     use ws2812_pio::Ws2812;
 
     const DISPLAY_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(50);
-    const ROTARY_ENCODER_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(1);
 
     /// A dummy timesource, which is mostly important for creating files.
     #[derive(Default)]
@@ -96,7 +96,6 @@ mod app {
     struct Shared {
         timer: hal::Timer,
         display_alarm: hal::timer::Alarm0,
-        rotary_encoder_alarm: hal::timer::Alarm1,
         led: Pin<Gpio25, FunctionSioOutput, PullNone>,
         rotary_encoder1: Rotary<
             Pin<Gpio10, FunctionSio<SioInput>, PullNone>,
@@ -180,23 +179,35 @@ mod app {
         let mut button9 = pins.gpio9.into_pull_up_input();
         // Rotary encoders
         // - Encoder 1
-        let mut rotary_encoder1 = Rotary::new(
-            pins.gpio10.into_floating_input(),
-            pins.gpio11.into_floating_input(),
-        );
-        let mut rotary_encoder1_switch = pins.gpio12.into_pull_up_input();
+        let gpio10 = pins.gpio10.into_floating_input();
+        gpio10.set_interrupt_enabled(EdgeHigh, true);
+        gpio10.set_interrupt_enabled(EdgeLow, true);
+        let gpio11 = pins.gpio11.into_floating_input();
+        gpio11.set_interrupt_enabled(EdgeHigh, true);
+        gpio11.set_interrupt_enabled(EdgeLow, true);
+        let rotary_encoder1 = Rotary::new(gpio10, gpio11);
+        let rotary_encoder1_switch = pins.gpio12.into_pull_up_input();
+        rotary_encoder1_switch.set_interrupt_enabled(EdgeLow, true);
         // - Encoder 2
-        let mut rotary_encoder2 = Rotary::new(
-            pins.gpio13.into_floating_input(),
-            pins.gpio14.into_floating_input(),
-        );
-        let mut rotary_encoder2_switch = pins.gpio15.into_pull_up_input();
+        let gpio13 = pins.gpio13.into_floating_input();
+        gpio13.set_interrupt_enabled(EdgeLow, true);
+        gpio13.set_interrupt_enabled(EdgeHigh, true);
+        let gpio14 = pins.gpio14.into_floating_input();
+        gpio14.set_interrupt_enabled(EdgeHigh, true);
+        gpio14.set_interrupt_enabled(EdgeLow, true);
+        let rotary_encoder2 = Rotary::new(gpio13, gpio14);
+        let rotary_encoder2_switch = pins.gpio15.into_pull_up_input();
+        rotary_encoder2_switch.set_interrupt_enabled(EdgeLow, true);
         // - Encoder 3
-        let mut rotary_encoder3 = Rotary::new(
-            pins.gpio20.into_floating_input(),
-            pins.gpio21.into_floating_input(),
-        );
-        let mut rotary_encoder3_switch = pins.gpio22.into_pull_up_input();
+        let gpio20 = pins.gpio20.into_floating_input();
+        gpio20.set_interrupt_enabled(EdgeLow, true);
+        gpio20.set_interrupt_enabled(EdgeHigh, true);
+        let gpio21 = pins.gpio21.into_floating_input();
+        gpio21.set_interrupt_enabled(EdgeHigh, true);
+        gpio21.set_interrupt_enabled(EdgeLow, true);
+        let rotary_encoder3 = Rotary::new(gpio20, gpio21);
+        let rotary_encoder3_switch = pins.gpio22.into_pull_up_input();
+        rotary_encoder3_switch.set_interrupt_enabled(EdgeLow, true);
         // Display
         let display_sda_pin: hal::gpio::Pin<_, hal::gpio::FunctionI2C, _> =
             pins.gpio26.reconfigure();
@@ -248,24 +259,18 @@ mod app {
             timer.count_down(),
         );
 
-        // Timers
-        // - Display update
+        // Timer for display update
         let mut display_alarm = timer.alarm_0().unwrap();
         let _ = display_alarm.schedule(DISPLAY_UPDATE);
         display.init().unwrap();
         display.clear();
         display.flush();
         display_alarm.enable_interrupt();
-        // - Rotary encoder update
-        let mut rotary_encoder_alarm = timer.alarm_1().unwrap();
-        let _ = rotary_encoder_alarm.schedule(ROTARY_ENCODER_UPDATE);
-        rotary_encoder_alarm.enable_interrupt();
 
         (
             Shared {
                 timer,
                 display_alarm,
-                rotary_encoder_alarm,
                 led,
                 rotary_encoder1,
                 rotary_encoder1_switch,
@@ -285,7 +290,7 @@ mod app {
 
     #[task(
         binds = TIMER_IRQ_0,
-        priority = 1,
+        priority = 3,
         shared = [timer, display_alarm, led, display, rotary_encoder1_value, rotary_encoder2_value, rotary_encoder3_value],
         local = [tog: bool = true],
     )]
@@ -317,9 +322,9 @@ mod app {
     }
 
     #[task(
-        binds = TIMER_IRQ_1,
+        binds = IO_IRQ_BANK0,
         priority = 1,
-        shared = [timer, rotary_encoder_alarm, led, rotary_encoder1, rotary_encoder1_switch, rotary_encoder1_value, rotary_encoder2, rotary_encoder2_switch,rotary_encoder2_value, rotary_encoder3, rotary_encoder3_switch, rotary_encoder3_value],
+        shared = [led, rotary_encoder1, rotary_encoder1_switch, rotary_encoder1_value, rotary_encoder2, rotary_encoder2_switch,rotary_encoder2_value, rotary_encoder3, rotary_encoder3_switch, rotary_encoder3_value],
         local = [tog: bool = true],
     )]
     fn rotary_encoder_update(mut c: rotary_encoder_update::Context) {
@@ -378,12 +383,6 @@ mod app {
                 };
                 *value += increment;
             });
-        });
-
-        let mut alarm = c.shared.rotary_encoder_alarm;
-        (alarm).lock(|a| {
-            a.clear_interrupt();
-            let _ = a.schedule(DISPLAY_UPDATE);
         });
     }
 }
