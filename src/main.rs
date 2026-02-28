@@ -41,6 +41,7 @@ mod app {
     // Embed the `Hz` function/trait:
     use fugit::RateExtU32;
 
+    use rp_pico::hal::rom_data::double_funcs::ddiv;
     // Import the SPI abstraction:
     use rp_pico::hal::spi;
 
@@ -61,7 +62,7 @@ mod app {
     use rp_pico::hal::Timer;
 
     use embedded_graphics::{pixelcolor::BinaryColor, prelude::*};
-    use rotary_encoder_hal::Rotary;
+    use rotary_encoder_hal::{Direction, Rotary};
     use rp_pico::hal::timer::Alarm;
     use rp_pico::pac::I2C1;
     use sh1106::{prelude::*, Builder};
@@ -98,22 +99,22 @@ mod app {
         rotary_encoder_alarm: hal::timer::Alarm1,
         led: Pin<Gpio25, FunctionSioOutput, PullNone>,
         rotary_encoder1: Rotary<
-            Pin<Gpio10, FunctionSio<SioInput>, PullUp>,
-            Pin<Gpio11, FunctionSio<SioInput>, PullUp>,
+            Pin<Gpio10, FunctionSio<SioInput>, PullNone>,
+            Pin<Gpio11, FunctionSio<SioInput>, PullNone>,
             DefaultPhase,
         >,
         rotary_encoder1_value: i32,
         rotary_encoder1_switch: Pin<Gpio12, FunctionSio<SioInput>, PullUp>,
         rotary_encoder2: Rotary<
-            Pin<Gpio13, FunctionSio<SioInput>, PullUp>,
-            Pin<Gpio14, FunctionSio<SioInput>, PullUp>,
+            Pin<Gpio13, FunctionSio<SioInput>, PullNone>,
+            Pin<Gpio14, FunctionSio<SioInput>, PullNone>,
             DefaultPhase,
         >,
         rotary_encoder2_value: i32,
         rotary_encoder2_switch: Pin<Gpio15, FunctionSio<SioInput>, PullUp>,
         rotary_encoder3: Rotary<
-            Pin<Gpio20, FunctionSio<SioInput>, PullUp>,
-            Pin<Gpio21, FunctionSio<SioInput>, PullUp>,
+            Pin<Gpio20, FunctionSio<SioInput>, PullNone>,
+            Pin<Gpio21, FunctionSio<SioInput>, PullNone>,
             DefaultPhase,
         >,
         rotary_encoder3_value: i32,
@@ -180,20 +181,20 @@ mod app {
         // Rotary encoders
         // - Encoder 1
         let mut rotary_encoder1 = Rotary::new(
-            pins.gpio10.into_pull_up_input(),
-            pins.gpio11.into_pull_up_input(),
+            pins.gpio10.into_floating_input(),
+            pins.gpio11.into_floating_input(),
         );
         let mut rotary_encoder1_switch = pins.gpio12.into_pull_up_input();
         // - Encoder 2
         let mut rotary_encoder2 = Rotary::new(
-            pins.gpio13.into_pull_up_input(),
-            pins.gpio14.into_pull_up_input(),
+            pins.gpio13.into_floating_input(),
+            pins.gpio14.into_floating_input(),
         );
         let mut rotary_encoder2_switch = pins.gpio15.into_pull_up_input();
         // - Encoder 3
         let mut rotary_encoder3 = Rotary::new(
-            pins.gpio20.into_pull_up_input(),
-            pins.gpio21.into_pull_up_input(),
+            pins.gpio20.into_floating_input(),
+            pins.gpio21.into_floating_input(),
         );
         let mut rotary_encoder3_switch = pins.gpio22.into_pull_up_input();
         // Display
@@ -210,11 +211,6 @@ mod app {
             &clocks.peripheral_clock,
         );
         let mut display: GraphicsMode<_> = Builder::new().connect_i2c(display_i2c).into();
-        // Draw on pixel to make sure the display is working
-        display.init().unwrap();
-        display.flush().unwrap();
-        display.set_pixel(20, 20, 1);
-        display.flush().unwrap();
 
         // SDCard
         // - Set up our SPI pins into the correct mode
@@ -256,6 +252,9 @@ mod app {
         // - Display update
         let mut display_alarm = timer.alarm_0().unwrap();
         let _ = display_alarm.schedule(DISPLAY_UPDATE);
+        display.init().unwrap();
+        display.clear();
+        display.flush();
         display_alarm.enable_interrupt();
         // - Rotary encoder update
         let mut rotary_encoder_alarm = timer.alarm_1().unwrap();
@@ -287,11 +286,28 @@ mod app {
     #[task(
         binds = TIMER_IRQ_0,
         priority = 1,
-        shared = [timer, display_alarm, led, ],
+        shared = [timer, display_alarm, led, display, rotary_encoder1_value, rotary_encoder2_value, rotary_encoder3_value],
         local = [tog: bool = true],
     )]
     fn display_update(mut c: display_update::Context) {
         c.shared.led.lock(|l| l.set_high().unwrap());
+        let mut rotary1_value = 0;
+        c.shared
+            .rotary_encoder1_value
+            .lock(|value| rotary1_value = *value);
+        let pixel_value: u32 = if 64 + rotary1_value > 127 {
+            127
+        } else if 64 + rotary1_value < 0 {
+            0
+        } else {
+            (64 + rotary1_value) as u32
+        };
+        c.shared.display.lock(|display| {
+            // Draw on pixel to make sure the display is working
+            display.clear();
+            display.set_pixel(pixel_value, 20, 1);
+            display.flush().unwrap();
+        });
 
         let mut alarm = c.shared.display_alarm;
         (alarm).lock(|a| {
@@ -303,13 +319,66 @@ mod app {
     #[task(
         binds = TIMER_IRQ_1,
         priority = 1,
-        shared = [timer, rotary_encoder_alarm, led],
+        shared = [timer, rotary_encoder_alarm, led, rotary_encoder1, rotary_encoder1_switch, rotary_encoder1_value, rotary_encoder2, rotary_encoder2_switch,rotary_encoder2_value, rotary_encoder3, rotary_encoder3_switch, rotary_encoder3_value],
         local = [tog: bool = true],
     )]
     fn rotary_encoder_update(mut c: rotary_encoder_update::Context) {
         c.shared.led.lock(|l| l.set_low().unwrap());
 
         *c.local.tog = !*c.local.tog;
+
+        // Check encoders
+        // - Encoder1
+        c.shared.rotary_encoder1.lock(|encoder| {
+            c.shared.rotary_encoder1_value.lock(|value| {
+                let increment = if let Ok(direction) = encoder.update() {
+                    if direction == Direction::Clockwise {
+                        1
+                    } else if direction == Direction::CounterClockwise {
+                        -1
+                    } else {
+                        0
+                    }
+                } else {
+                    0
+                };
+                *value += increment;
+            });
+        });
+        // - Encoder2
+        c.shared.rotary_encoder2.lock(|encoder| {
+            c.shared.rotary_encoder2_value.lock(|value| {
+                let increment = if let Ok(direction) = encoder.update() {
+                    if direction == Direction::Clockwise {
+                        1
+                    } else if direction == Direction::CounterClockwise {
+                        -1
+                    } else {
+                        0
+                    }
+                } else {
+                    0
+                };
+                *value += increment;
+            });
+        });
+        // - Encoder1
+        c.shared.rotary_encoder3.lock(|encoder| {
+            c.shared.rotary_encoder3_value.lock(|value| {
+                let increment = if let Ok(direction) = encoder.update() {
+                    if direction == Direction::Clockwise {
+                        1
+                    } else if direction == Direction::CounterClockwise {
+                        -1
+                    } else {
+                        0
+                    }
+                } else {
+                    0
+                };
+                *value += increment;
+            });
+        });
 
         let mut alarm = c.shared.rotary_encoder_alarm;
         (alarm).lock(|a| {
