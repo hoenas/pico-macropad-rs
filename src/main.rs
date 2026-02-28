@@ -51,9 +51,12 @@ mod app {
     use embedded_hal::digital::OutputPin;
     use rp_pico::hal::Timer;
 
+    use embedded_graphics::{pixelcolor::BinaryColor, prelude::*};
     use rotary_encoder_hal::Rotary;
     use rp_pico::hal::timer::Alarm;
-    use sh1106::{mode::GraphicsMode, Builder};
+    use sh1106::{prelude::*, Builder};
+    use smart_leds::SmartLedsWrite;
+    use smart_leds::RGB8;
     use ws2812_pio::Ws2812;
 
     const DISPLAY_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(50);
@@ -169,6 +172,11 @@ mod app {
             &clocks.peripheral_clock,
         );
         let mut display: GraphicsMode<_> = Builder::new().connect_i2c(display_i2c).into();
+        // Draw on pixel to make sure the display is working
+        display.init().unwrap();
+        display.flush().unwrap();
+        display.set_pixel(20, 20, 1);
+        display.flush().unwrap();
 
         // SDCard
         // - Set up our SPI pins into the correct mode

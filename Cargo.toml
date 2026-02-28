@@ -33,6 +33,7 @@ panic-halt = "1.0.0"
 rp2040-boot2 = "0.3.0"
 ws2812-pio = { git = "https://github.com/IVAN-MK7/ws2812-pio-rs.git", branch = "hal-0.12" }
 smart-leds = "0.4.0"
+embedded-graphics = "0.8.2"
 
 
 # cargo build/run
