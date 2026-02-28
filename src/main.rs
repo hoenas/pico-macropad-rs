@@ -8,6 +8,7 @@ mod app {
     use embedded_hal::digital::StatefulOutputPin;
     use embedded_sdmmc::sdcard;
     use fugit::MicrosDurationU32;
+    use rotary_encoder_hal::DefaultPhase;
     use rp_pico::XOSC_CRYSTAL_FREQ;
     // The macro for our start-up function
     use rp_pico::entry;
@@ -21,6 +22,11 @@ mod app {
     use panic_halt as _;
 
     use rp_pico::hal::clocks::init_clocks_and_plls;
+    use rp_pico::hal::gpio::FunctionNull;
+    use rp_pico::hal::gpio::FunctionSio;
+    use rp_pico::hal::gpio::PullDown;
+    use rp_pico::hal::gpio::PullUp;
+    use rp_pico::hal::gpio::SioInput;
     use rp_pico::hal::Sio;
     use rp_pico::hal::Watchdog;
     // Pull in any important traits
@@ -42,10 +48,7 @@ mod app {
     // Link in the embedded_sdmmc crate.
     // The `SdMmcSpi` is used for block level access to the card.
     // And the `VolumeManager` gives access to the FAT filesystem functions.
-    use embedded_sdmmc::{SdCard, TimeSource, Timestamp, VolumeIdx, VolumeManager};
-
-    // Get the file open mode enum:
-    use embedded_sdmmc::filesystem::Mode;
+    use embedded_sdmmc::{Mode, SdCard, TimeSource, Timestamp, VolumeIdx, VolumeManager};
 
     use embedded_hal::delay::DelayNs;
     use embedded_hal::digital::OutputPin;
@@ -91,6 +94,27 @@ mod app {
             hal::gpio::FunctionSioOutput,
             hal::gpio::PullNone,
         >,
+        rotary_encoder1: Rotary<
+            hal::gpio::Pin<hal::gpio::bank0::Gpio10, FunctionSio<SioInput>, PullUp>,
+            hal::gpio::Pin<hal::gpio::bank0::Gpio11, FunctionSio<SioInput>, PullUp>,
+            DefaultPhase,
+        >,
+        rotary_encoder1_switch:
+            hal::gpio::Pin<hal::gpio::bank0::Gpio12, FunctionSio<SioInput>, PullUp>,
+        rotary_encoder2: Rotary<
+            hal::gpio::Pin<hal::gpio::bank0::Gpio13, FunctionSio<SioInput>, PullUp>,
+            hal::gpio::Pin<hal::gpio::bank0::Gpio14, FunctionSio<SioInput>, PullUp>,
+            DefaultPhase,
+        >,
+        rotary_encoder2_switch:
+            hal::gpio::Pin<hal::gpio::bank0::Gpio15, FunctionSio<SioInput>, PullUp>,
+        rotary_encoder3: Rotary<
+            hal::gpio::Pin<hal::gpio::bank0::Gpio20, FunctionSio<SioInput>, PullUp>,
+            hal::gpio::Pin<hal::gpio::bank0::Gpio21, FunctionSio<SioInput>, PullUp>,
+            DefaultPhase,
+        >,
+        rotary_encoder3_switch:
+            hal::gpio::Pin<hal::gpio::bank0::Gpio22, FunctionSio<SioInput>, PullUp>,
     }
 
     #[local]
@@ -142,22 +166,22 @@ mod app {
         // Rotary encoders
         // - Encoder 1
         let mut rotary_encoder1 = Rotary::new(
-            &mut pins.gpio10.into_pull_up_input(),
-            &mut pins.gpio11.into_pull_up_input(),
+            pins.gpio10.into_pull_up_input(),
+            pins.gpio11.into_pull_up_input(),
         );
-        let mut rotary_encoder_1_button = pins.gpio12;
+        let mut rotary_encoder1_switch = pins.gpio12.into_pull_up_input();
         // - Encoder 2
         let mut rotary_encoder2 = Rotary::new(
-            &mut pins.gpio13.into_pull_up_input(),
-            &mut pins.gpio14.into_pull_up_input(),
+            pins.gpio13.into_pull_up_input(),
+            pins.gpio14.into_pull_up_input(),
         );
-        let mut rotary_encoder_2_button = pins.gpio15;
+        let mut rotary_encoder2_switch = pins.gpio15.into_pull_up_input();
         // - Encoder 3
         let mut rotary_encoder3 = Rotary::new(
-            &mut pins.gpio20.into_pull_up_input(),
-            &mut pins.gpio21.into_pull_up_input(),
+            pins.gpio20.into_pull_up_input(),
+            pins.gpio21.into_pull_up_input(),
         );
-        let mut rotary_encoder_3_button = pins.gpio22;
+        let mut rotary_encoder3_switch = pins.gpio22.into_pull_up_input();
         // Display
         let display_sda_pin: hal::gpio::Pin<_, hal::gpio::FunctionI2C, _> =
             pins.gpio26.reconfigure();
@@ -230,6 +254,12 @@ mod app {
                 display_alarm,
                 rotary_encoder_alarm,
                 led,
+                rotary_encoder1,
+                rotary_encoder1_switch,
+                rotary_encoder2,
+                rotary_encoder2_switch,
+                rotary_encoder3,
+                rotary_encoder3_switch,
             },
             Local {},
             init::Monotonics(),
