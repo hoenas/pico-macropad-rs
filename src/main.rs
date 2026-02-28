@@ -176,16 +176,16 @@ mod app {
         let mut led = pins.led.reconfigure();
         led.is_set_low().unwrap();
         // Buttons
-        let button0 = pins.gpio0.into_pull_up_input();
-        let button1 = pins.gpio1.into_pull_up_input();
-        let button2 = pins.gpio2.into_pull_up_input();
-        let button3 = pins.gpio3.into_pull_up_input();
-        let button4 = pins.gpio4.into_pull_up_input();
-        let button5 = pins.gpio5.into_pull_up_input();
-        let button6 = pins.gpio6.into_pull_up_input();
-        let button7 = pins.gpio7.into_pull_up_input();
-        let button8 = pins.gpio8.into_pull_up_input();
-        let button9 = pins.gpio9.into_pull_up_input();
+        let _button0 = pins.gpio0.into_pull_up_input();
+        let _button1 = pins.gpio1.into_pull_up_input();
+        let _button2 = pins.gpio2.into_pull_up_input();
+        let _button3 = pins.gpio3.into_pull_up_input();
+        let _button4 = pins.gpio4.into_pull_up_input();
+        let _button5 = pins.gpio5.into_pull_up_input();
+        let _button6 = pins.gpio6.into_pull_up_input();
+        let _button7 = pins.gpio7.into_pull_up_input();
+        let _button8 = pins.gpio8.into_pull_up_input();
+        let _button9 = pins.gpio9.into_pull_up_input();
         // Rotary encoders
         // - Encoder 1
         let gpio10 = pins.gpio10.into_floating_input();
