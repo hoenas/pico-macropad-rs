@@ -9,6 +9,7 @@ mod app {
     use embedded_sdmmc::sdcard;
     use fugit::MicrosDurationU32;
     use rotary_encoder_hal::DefaultPhase;
+    use rotary_encoder_hal::Direction;
     use rp_pico::XOSC_CRYSTAL_FREQ;
     // The macro for our start-up function
     use rp_pico::entry;
@@ -327,12 +328,12 @@ mod app {
         c.shared
             .rotary_encoder2_value
             .lock(|value| rotary2_value = *value);
-        let pixel_value_y: u32 = if 32 + rotary2_value > 127 {
+        let pixel_value_y: u32 = if 32 + rotary2_value > 63 {
             63
         } else if 32 + rotary2_value < 0 {
             0
         } else {
-            (64 + rotary2_value) as u32
+            (32 + rotary2_value) as u32
         };
         c.shared.display.lock(|display| {
             // Draw on pixel to make sure the display is working
