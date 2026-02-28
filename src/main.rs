@@ -21,14 +21,20 @@ mod app {
     // be linked)
     use panic_halt as _;
 
+    use hal::gpio::Pin;
     use rp_pico::hal::clocks::init_clocks_and_plls;
+    use rp_pico::hal::gpio::bank0::*;
+    use rp_pico::hal::gpio::FunctionI2c;
     use rp_pico::hal::gpio::FunctionNull;
     use rp_pico::hal::gpio::FunctionSio;
+    use rp_pico::hal::gpio::FunctionSioOutput;
     use rp_pico::hal::gpio::PullDown;
+    use rp_pico::hal::gpio::PullNone;
     use rp_pico::hal::gpio::PullUp;
     use rp_pico::hal::gpio::SioInput;
     use rp_pico::hal::Sio;
     use rp_pico::hal::Watchdog;
+    use rp_pico::hal::I2C;
     // Pull in any important traits
     use rp_pico::hal::prelude::*;
 
@@ -57,6 +63,7 @@ mod app {
     use embedded_graphics::{pixelcolor::BinaryColor, prelude::*};
     use rotary_encoder_hal::Rotary;
     use rp_pico::hal::timer::Alarm;
+    use rp_pico::pac::I2C1;
     use sh1106::{prelude::*, Builder};
     use smart_leds::SmartLedsWrite;
     use smart_leds::RGB8;
@@ -89,32 +96,36 @@ mod app {
         timer: hal::Timer,
         display_alarm: hal::timer::Alarm0,
         rotary_encoder_alarm: hal::timer::Alarm1,
-        led: hal::gpio::Pin<
-            hal::gpio::bank0::Gpio25,
-            hal::gpio::FunctionSioOutput,
-            hal::gpio::PullNone,
-        >,
+        led: Pin<Gpio25, FunctionSioOutput, PullNone>,
         rotary_encoder1: Rotary<
-            hal::gpio::Pin<hal::gpio::bank0::Gpio10, FunctionSio<SioInput>, PullUp>,
-            hal::gpio::Pin<hal::gpio::bank0::Gpio11, FunctionSio<SioInput>, PullUp>,
+            Pin<Gpio10, FunctionSio<SioInput>, PullUp>,
+            Pin<Gpio11, FunctionSio<SioInput>, PullUp>,
             DefaultPhase,
         >,
-        rotary_encoder1_switch:
-            hal::gpio::Pin<hal::gpio::bank0::Gpio12, FunctionSio<SioInput>, PullUp>,
+        rotary_encoder1_switch: Pin<Gpio12, FunctionSio<SioInput>, PullUp>,
         rotary_encoder2: Rotary<
-            hal::gpio::Pin<hal::gpio::bank0::Gpio13, FunctionSio<SioInput>, PullUp>,
-            hal::gpio::Pin<hal::gpio::bank0::Gpio14, FunctionSio<SioInput>, PullUp>,
+            Pin<Gpio13, FunctionSio<SioInput>, PullUp>,
+            Pin<Gpio14, FunctionSio<SioInput>, PullUp>,
             DefaultPhase,
         >,
-        rotary_encoder2_switch:
-            hal::gpio::Pin<hal::gpio::bank0::Gpio15, FunctionSio<SioInput>, PullUp>,
+        rotary_encoder2_switch: Pin<Gpio15, FunctionSio<SioInput>, PullUp>,
         rotary_encoder3: Rotary<
-            hal::gpio::Pin<hal::gpio::bank0::Gpio20, FunctionSio<SioInput>, PullUp>,
-            hal::gpio::Pin<hal::gpio::bank0::Gpio21, FunctionSio<SioInput>, PullUp>,
+            Pin<Gpio20, FunctionSio<SioInput>, PullUp>,
+            Pin<Gpio21, FunctionSio<SioInput>, PullUp>,
             DefaultPhase,
         >,
-        rotary_encoder3_switch:
-            hal::gpio::Pin<hal::gpio::bank0::Gpio22, FunctionSio<SioInput>, PullUp>,
+        rotary_encoder3_switch: Pin<Gpio22, FunctionSio<SioInput>, PullUp>,
+        display: GraphicsMode<
+            I2cInterface<
+                I2C<
+                    I2C1,
+                    (
+                        Pin<Gpio26, FunctionI2c, PullUp>,
+                        Pin<Gpio27, FunctionI2c, PullUp>,
+                    ),
+                >,
+            >,
+        >,
     }
 
     #[local]
@@ -260,6 +271,7 @@ mod app {
                 rotary_encoder2_switch,
                 rotary_encoder3,
                 rotary_encoder3_switch,
+                display,
             },
             Local {},
             init::Monotonics(),
@@ -269,7 +281,7 @@ mod app {
     #[task(
         binds = TIMER_IRQ_0,
         priority = 1,
-        shared = [timer, display_alarm, led],
+        shared = [timer, display_alarm, led, ],
         local = [tog: bool = true],
     )]
     fn display_update(mut c: display_update::Context) {
