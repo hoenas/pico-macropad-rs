@@ -77,8 +77,6 @@ mod app {
     use smart_leds::RGB8;
     use ws2812_pio::Ws2812;
 
-    use libm::sin;
-
     const DISPLAY_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(50);
     const RGB_LEDS_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(25);
     const NUM_LEDS: usize = 7;
@@ -265,7 +263,7 @@ mod app {
 
         // - RGB LEDs
         let (mut pio, sm0, _, _, _) = c.device.PIO0.split(&mut resets);
-        let mut rgb_leds = Ws2812::new(
+        let rgb_leds = Ws2812::new(
             pins.gpio28.into_function(),
             &mut pio,
             sm0,
