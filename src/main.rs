@@ -175,16 +175,16 @@ mod app {
         let mut led = pins.led.reconfigure();
         led.is_set_low().unwrap();
         // Buttons
-        let mut button0 = pins.gpio0.into_pull_up_input();
-        let mut button1 = pins.gpio1.into_pull_up_input();
-        let mut button2 = pins.gpio2.into_pull_up_input();
-        let mut button3 = pins.gpio3.into_pull_up_input();
-        let mut button4 = pins.gpio4.into_pull_up_input();
-        let mut button5 = pins.gpio5.into_pull_up_input();
-        let mut button6 = pins.gpio6.into_pull_up_input();
-        let mut button7 = pins.gpio7.into_pull_up_input();
-        let mut button8 = pins.gpio8.into_pull_up_input();
-        let mut button9 = pins.gpio9.into_pull_up_input();
+        let button0 = pins.gpio0.into_pull_up_input();
+        let button1 = pins.gpio1.into_pull_up_input();
+        let button2 = pins.gpio2.into_pull_up_input();
+        let button3 = pins.gpio3.into_pull_up_input();
+        let button4 = pins.gpio4.into_pull_up_input();
+        let button5 = pins.gpio5.into_pull_up_input();
+        let button6 = pins.gpio6.into_pull_up_input();
+        let button7 = pins.gpio7.into_pull_up_input();
+        let button8 = pins.gpio8.into_pull_up_input();
+        let button9 = pins.gpio9.into_pull_up_input();
         // Rotary encoders
         // - Encoder 1
         let gpio10 = pins.gpio10.into_floating_input();
@@ -244,13 +244,13 @@ mod app {
             pins.gpio16.reconfigure();
         let sdmmc_spi_cs = pins.gpio17.into_push_pull_output();
         // - Create the SPI driver instance for the SPI0 device
-        let mut spi0 = spi::Spi::<_, _, _, 8>::new(
+        let spi0 = spi::Spi::<_, _, _, 8>::new(
             c.device.SPI0,
             (sdmmc_spi_mosi, sdmmc_spi_miso, sdmmc_spi_sclk),
         );
 
         // - Exchange the uninitialised SPI driver for an initialised one
-        let mut sdmmc_spi = spi0.init(
+        let sdmmc_spi = spi0.init(
             &mut resets,
             clocks.peripheral_clock.freq(),
             400.kHz(), // card initialization happens at low baud rate
@@ -258,11 +258,11 @@ mod app {
         );
         let mut timer = Timer::new(c.device.TIMER, &mut resets, &clocks);
         let sdcard = SdCard::new(sdmmc_spi, sdmmc_spi_cs, timer);
-        let mut volume_mgr = VolumeManager::new(sdcard, DummyTimesource::default());
+        let volume_mgr = VolumeManager::new(sdcard, DummyTimesource::default());
 
         // - RGB LEDs
         let (mut pio, sm0, _, _, _) = c.device.PIO0.split(&mut resets);
-        let mut rgb_leds = Ws2812::new(
+        let rgb_leds = Ws2812::new(
             pins.gpio28.into_function(),
             &mut pio,
             sm0,
