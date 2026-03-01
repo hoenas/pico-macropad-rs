@@ -42,17 +42,12 @@ pub struct LedColor(u8, u8, u8);
 
 #[derive(serde::Deserialize)]
 pub struct ButtonConfig {
+    pub display_text: [char; 4],
     pub mode: Mode,
-    pub buttons: [KeyboardCode; 16],
-    pub button_array_size: usize,
+    pub delay: usize,
+    pub buttons: [Option<KeyboardCode>; 16],
 }
 
-#[derive(serde::Deserialize)]
-pub struct RotaryEncoderConfig {
-    pub left: ButtonConfig,
-    pub right: ButtonConfig,
-    pub push: ButtonConfig,
-}
 #[derive(serde::Deserialize)]
 pub enum Mode {
     Cycle,
@@ -243,4 +238,12 @@ impl KeyboardCode {
     pub fn to_keyboard(self) -> Keyboard {
         Keyboard::from(self as u8)
     }
+}
+
+#[derive(serde::Deserialize)]
+pub struct RotaryEncoderConfig {
+    pub display_text: [char; 7],
+    pub left: ButtonConfig,
+    pub right: ButtonConfig,
+    pub push: ButtonConfig,
 }
