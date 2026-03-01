@@ -5,16 +5,12 @@ use panic_halt as _;
 
 #[rtic::app(device = rp_pico::hal::pac, peripherals = true)]
 mod app {
-    use core::f32::consts::PI;
-
     use embedded_hal::digital::StatefulOutputPin;
-    use embedded_sdmmc::sdcard;
     use fugit::MicrosDurationU32;
     use rotary_encoder_hal::DefaultPhase;
     use rp_pico::XOSC_CRYSTAL_FREQ;
     // The macro for our start-up function
     use rp_pico::entry;
-
     // info!() and error!() macros for printing information to the debug output
     use defmt::*;
     use defmt_rtt as _;
@@ -45,8 +41,6 @@ mod app {
 
     // Embed the `Hz` function/trait:
     use fugit::RateExtU32;
-
-    use rp_pico::hal::rom_data::double_funcs::ddiv;
     // Import the SPI abstraction:
     use rp_pico::hal::spi;
 
@@ -66,7 +60,15 @@ mod app {
     use embedded_hal::digital::OutputPin;
     use rp_pico::hal::Timer;
 
-    use embedded_graphics::{pixelcolor::BinaryColor, prelude::*};
+    use embedded_graphics::{
+        mono_font::{ascii::FONT_6X10, MonoTextStyle},
+        pixelcolor::BinaryColor,
+        prelude::*,
+        primitives::{
+            Circle, PrimitiveStyle, PrimitiveStyleBuilder, Rectangle, StrokeAlignment, Triangle,
+        },
+        text::{Alignment, Text},
+    };
     use rotary_encoder_hal::{Direction, Rotary};
     use rp2040_hal::pio::SM0;
     use rp2040_hal::timer::CountDown;
@@ -80,6 +82,9 @@ mod app {
     const DISPLAY_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(50);
     const RGB_LEDS_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(25);
     const NUM_LEDS: usize = 7;
+    const MAX_FILE_NAMES: usize = 64;
+    const CHARACTER_STYLE: MonoTextStyle<BinaryColor> =
+        MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
     /// A dummy timesource, which is mostly important for creating files.
     #[derive(Default)]
     pub struct DummyTimesource();
@@ -313,34 +318,45 @@ mod app {
         c.shared.led.lock(|l| l.set_high().unwrap());
         let mut rotary1_value = 0;
         let mut rotary2_value = 0;
+        let mut rotary3_value = 0;
         c.shared
             .rotary_encoder1_value
             .lock(|value| rotary1_value = *value);
         c.shared
             .rotary_encoder2_value
             .lock(|value| rotary2_value = *value);
-        let pixel_value_x: u32 = if 64 + rotary1_value > 127 {
-            127
-        } else if 64 + rotary1_value < 0 {
-            0
-        } else {
-            (64 + rotary1_value) as u32
-        };
         c.shared
-            .rotary_encoder2_value
-            .lock(|value| rotary2_value = *value);
-        let pixel_value_y: u32 = if 32 + rotary2_value > 63 {
-            63
-        } else if 32 + rotary2_value < 0 {
-            0
-        } else {
-            (32 + rotary2_value) as u32
-        };
+            .rotary_encoder3_value
+            .lock(|value| rotary3_value = *value);
         c.shared.display.lock(|display| {
-            // Draw on pixel to make sure the display is working
+            // Write encoder values
+            let mut buffer = itoa::Buffer::new();
             display.clear();
-            display.set_pixel(pixel_value_x, pixel_value_y, 1);
-            display.flush().unwrap();
+            Text::with_alignment(
+                buffer.format(rotary1_value),
+                display.bounding_box().top_left + Point::new(10, 20),
+                CHARACTER_STYLE,
+                Alignment::Center,
+            )
+            .draw(display)
+            .unwrap();
+            Text::with_alignment(
+                buffer.format(rotary2_value),
+                display.bounding_box().top_left + Point::new(10, 30),
+                CHARACTER_STYLE,
+                Alignment::Center,
+            )
+            .draw(display)
+            .unwrap();
+            Text::with_alignment(
+                buffer.format(rotary3_value),
+                display.bounding_box().top_left + Point::new(10, 40),
+                CHARACTER_STYLE,
+                Alignment::Center,
+            )
+            .draw(display)
+            .unwrap();
+            display.flush();
         });
 
         let mut alarm = c.shared.display_alarm;
@@ -393,9 +409,9 @@ mod app {
             c.shared.rotary_encoder1_value.lock(|value| {
                 let increment = if let Ok(direction) = encoder.update() {
                     if direction == Direction::Clockwise {
-                        1
-                    } else if direction == Direction::CounterClockwise {
                         -1
+                    } else if direction == Direction::CounterClockwise {
+                        1
                     } else {
                         0
                     }
@@ -405,14 +421,15 @@ mod app {
                 *value += increment;
             });
         });
+        c.shared.rotary_encoder1_switch.lock(|switch| {});
         // - Encoder2
         c.shared.rotary_encoder2.lock(|encoder| {
             c.shared.rotary_encoder2_value.lock(|value| {
                 let increment = if let Ok(direction) = encoder.update() {
                     if direction == Direction::Clockwise {
-                        1
-                    } else if direction == Direction::CounterClockwise {
                         -1
+                    } else if direction == Direction::CounterClockwise {
+                        1
                     } else {
                         0
                     }
@@ -427,9 +444,9 @@ mod app {
             c.shared.rotary_encoder3_value.lock(|value| {
                 let increment = if let Ok(direction) = encoder.update() {
                     if direction == Direction::Clockwise {
-                        1
-                    } else if direction == Direction::CounterClockwise {
                         -1
+                    } else if direction == Direction::CounterClockwise {
+                        1
                     } else {
                         0
                     }
