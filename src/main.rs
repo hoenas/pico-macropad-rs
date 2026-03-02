@@ -5,7 +5,11 @@ use panic_halt as _;
 
 #[rtic::app(device = rp_pico::hal::pac, peripherals = true)]
 mod app {
+    use core::fmt::Debug;
+
     use embedded_hal::digital::StatefulOutputPin;
+    use embedded_sdmmc::DirEntry;
+    use embedded_sdmmc::ShortFileName;
     use fugit::MicrosDurationU32;
     use rotary_encoder_hal::DefaultPhase;
     use rp_pico::XOSC_CRYSTAL_FREQ;
@@ -145,6 +149,50 @@ mod app {
         rgb_leds: Ws2812<PIO0, SM0, CountDown, Pin<Gpio28, FunctionPio0, PullDown>>,
     }
 
+    // Setup some blinking codes:
+    const BLINK_OK_LONG: [u8; 1] = [8u8];
+    const BLINK_OK_SHORT_LONG: [u8; 4] = [1u8, 0u8, 6u8, 0u8];
+    const BLINK_OK_SHORT_SHORT_LONG: [u8; 6] = [1u8, 0u8, 1u8, 0u8, 6u8, 0u8];
+    const BLINK_ERR_3_SHORT: [u8; 6] = [1u8, 0u8, 1u8, 0u8, 1u8, 0u8];
+    const BLINK_ERR_4_SHORT: [u8; 8] = [1u8, 0u8, 1u8, 0u8, 1u8, 0u8, 1u8, 0u8];
+    const BLINK_ERR_5_SHORT: [u8; 10] = [1u8, 0u8, 1u8, 0u8, 1u8, 0u8, 1u8, 0u8, 1u8, 0u8];
+    const BLINK_ERR_6_SHORT: [u8; 12] =
+        [1u8, 0u8, 1u8, 0u8, 1u8, 0u8, 1u8, 0u8, 1u8, 0u8, 1u8, 0u8];
+
+    fn blink_signals(
+        pin: &mut dyn embedded_hal::digital::OutputPin<Error = core::convert::Infallible>,
+        delay: &mut dyn DelayNs,
+        sig: &[u8],
+    ) {
+        for bit in sig {
+            if *bit != 0 {
+                pin.set_high().unwrap();
+            } else {
+                pin.set_low().unwrap();
+            }
+
+            let length = if *bit > 0 { *bit } else { 1 };
+
+            for _ in 0..length {
+                delay.delay_ms(100);
+            }
+        }
+
+        pin.set_low().unwrap();
+
+        delay.delay_ms(500);
+    }
+
+    fn blink_signals_loop(
+        pin: &mut dyn embedded_hal::digital::OutputPin<Error = core::convert::Infallible>,
+        delay: &mut dyn DelayNs,
+        sig: &[u8],
+    ) -> ! {
+        loop {
+            blink_signals(pin, delay, sig);
+        }
+    }
+
     #[local]
     struct Local {}
 
@@ -262,12 +310,50 @@ mod app {
             400.kHz(), // card initialization happens at low baud rate
             embedded_hal::spi::MODE_0,
         );
+        display.clear();
+        display.flush();
+
         let mut timer = Timer::new(c.device.TIMER, &mut resets, &clocks);
         let sdcard = SdCard::new(sdmmc_spi, sdmmc_spi_cs, timer);
-        let volume_mgr = VolumeManager::new(sdcard, DummyTimesource::default());
+        let mut volume_mgr = embedded_sdmmc::VolumeManager::new(sdcard, DummyTimesource::default());
+        Text::with_alignment(
+            "Opening SDCard...",
+            display.bounding_box().top_left + Point::new(0, 10),
+            CHARACTER_STYLE,
+            Alignment::Left,
+        )
+        .draw(&mut display)
+        .unwrap();
+        display.flush();
 
+        let mut volume0 = match volume_mgr.get_volume(embedded_sdmmc::VolumeIdx(0)) {
+            Err(_) => blink_signals_loop(&mut led, &mut timer, &BLINK_ERR_3_SHORT),
+            Ok(val) => val,
+        };
+        Text::with_alignment(
+            "Reading files...",
+            display.bounding_box().top_left + Point::new(0, 20),
+            CHARACTER_STYLE,
+            Alignment::Left,
+        )
+        .draw(&mut display)
+        .unwrap();
+        display.flush();
+
+        let mut root_dir = match volume_mgr.open_root_dir(&volume0) {
+            Err(_) => blink_signals_loop(&mut led, &mut timer, &BLINK_ERR_4_SHORT),
+            Ok(val) => val,
+        };
+        let mut config_files = &[""; MAX_FILE_NAMES];
+        let mut config_file_count = 0 as usize;
+        // volume_mgr.iterate_dir(&volume0, &root_dir, |entry| {
+        //     if core::str::from_utf8(&entry.name.extension()).unwrap() == "json" {
+        //         config_files[config_file_count] =                config_file_count += 1;
+        //     }
+        // });
         // - RGB LEDs
         let (mut pio, sm0, _, _, _) = c.device.PIO0.split(&mut resets);
+
         let rgb_leds = Ws2812::new(
             pins.gpio28.into_function(),
             &mut pio,
