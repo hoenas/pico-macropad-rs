@@ -30,6 +30,7 @@ mod app {
     use panic_halt as _;
 
     use hal::gpio::Pin;
+    use rp2040_hal::dma::bidirectional::Config;
     use rp2040_hal::gpio::FunctionPio0;
     use rp2040_hal::gpio::Interrupt::{EdgeHigh, EdgeLow};
     use rp_pico::hal::clocks::init_clocks_and_plls;
@@ -89,15 +90,16 @@ mod app {
     use smart_leds::RGB8;
     use ws2812_pio::Ws2812;
 
-    const DISPLAY_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(50);
+    const DISPLAY_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(250);
     const RGB_LEDS_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(25);
     const NUM_LEDS: usize = 7;
     const MAX_FILE_NAMES: usize = 64;
     const CHARACTER_STYLE: MonoTextStyle<BinaryColor> =
         MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
+    const MENU_ENTRY_COUNT: usize = 6;
     /// A dummy timesource, which is mostly important for creating files.
     #[derive(Default)]
-    pub struct DummyTimesource();
+    struct DummyTimesource();
 
     impl TimeSource for DummyTimesource {
         // In theory you could use the RTC of the rp2040 here, if you had
@@ -125,21 +127,21 @@ mod app {
             Pin<Gpio11, FunctionSio<SioInput>, PullNone>,
             DefaultPhase,
         >,
-        rotary_encoder1_value: i32,
+        rotary_encoder1_value: usize,
         rotary_encoder1_switch: Pin<Gpio12, FunctionSio<SioInput>, PullUp>,
         rotary_encoder2: Rotary<
             Pin<Gpio13, FunctionSio<SioInput>, PullNone>,
             Pin<Gpio14, FunctionSio<SioInput>, PullNone>,
             DefaultPhase,
         >,
-        rotary_encoder2_value: i32,
+        rotary_encoder2_value: usize,
         rotary_encoder2_switch: Pin<Gpio15, FunctionSio<SioInput>, PullUp>,
         rotary_encoder3: Rotary<
             Pin<Gpio20, FunctionSio<SioInput>, PullNone>,
             Pin<Gpio21, FunctionSio<SioInput>, PullNone>,
             DefaultPhase,
         >,
-        rotary_encoder3_value: i32,
+        rotary_encoder3_value: usize,
         rotary_encoder3_switch: Pin<Gpio22, FunctionSio<SioInput>, PullUp>,
         display: GraphicsMode<
             I2cInterface<
@@ -153,6 +155,7 @@ mod app {
             >,
         >,
         rgb_leds: Ws2812<PIO0, SM0, CountDown, Pin<Gpio28, FunctionPio0, PullDown>>,
+        config_files: Vec<String>,
     }
 
     // Setup some blinking codes:
@@ -360,9 +363,12 @@ mod app {
         };
         let mut config_files = Vec::<String>::new();
         volume_mgr.iterate_dir(&volume0, &root_dir, |entry| {
-            if core::str::from_utf8(&entry.name.extension()).unwrap() == "json" {
-                config_files.push(format!("{entry:?}"));
-            }
+            let config_file: String = format!(
+                "{}.{}",
+                str::from_utf8(entry.name.base_name()).unwrap(),
+                str::from_utf8(entry.name.extension()).unwrap()
+            );
+            config_files.push(config_file);
         });
         // - RGB LEDs
         let (mut pio, sm0, _, _, _) = c.device.PIO0.split(&mut resets);
@@ -401,6 +407,7 @@ mod app {
                 rotary_encoder3_value: 0,
                 display,
                 rgb_leds,
+                config_files,
             },
             Local {},
             init::Monotonics(),
@@ -410,7 +417,7 @@ mod app {
     #[task(
         binds = TIMER_IRQ_0,
         priority = 3,
-        shared = [timer, display_alarm, led, display, rotary_encoder1_value, rotary_encoder2_value, rotary_encoder3_value],
+        shared = [timer, display_alarm, led, display, rotary_encoder1_value, rotary_encoder2_value, rotary_encoder3_value, config_files],
         local = [tog: bool = true],
     )]
     fn display_update(mut c: display_update::Context) {
@@ -427,34 +434,22 @@ mod app {
         c.shared
             .rotary_encoder3_value
             .lock(|value| rotary3_value = *value);
-        c.shared.display.lock(|display| {
-            // Write encoder values
-            let mut buffer = itoa::Buffer::new();
+        let menu_index = (rotary1_value / 4) as usize;
+        (c.shared.display, c.shared.config_files).lock(|display, config_files| {
             display.clear();
-            Text::with_alignment(
-                buffer.format(rotary1_value),
-                display.bounding_box().top_left + Point::new(10, 20),
-                CHARACTER_STYLE,
-                Alignment::Center,
-            )
-            .draw(display)
-            .unwrap();
-            Text::with_alignment(
-                buffer.format(rotary2_value),
-                display.bounding_box().top_left + Point::new(10, 30),
-                CHARACTER_STYLE,
-                Alignment::Center,
-            )
-            .draw(display)
-            .unwrap();
-            Text::with_alignment(
-                buffer.format(rotary3_value),
-                display.bounding_box().top_left + Point::new(10, 40),
-                CHARACTER_STYLE,
-                Alignment::Center,
-            )
-            .draw(display)
-            .unwrap();
+            for (i, menu_item) in config_files.iter().enumerate() {
+                if i >= MENU_ENTRY_COUNT {
+                    break;
+                }
+                Text::with_alignment(
+                    menu_item,
+                    display.bounding_box().top_left + Point::new(0, ((i + 1) * 10) as i32),
+                    CHARACTER_STYLE,
+                    Alignment::Left,
+                )
+                .draw(display)
+                .unwrap();
+            }
             display.flush();
         });
 
@@ -517,10 +512,16 @@ mod app {
                 } else {
                     0
                 };
-                *value += increment;
+                let temp_value = *value as i32 + increment;
+                *value = if temp_value < 0 {
+                    0
+                } else {
+                    temp_value as usize
+                };
             });
         });
         c.shared.rotary_encoder1_switch.lock(|switch| {});
+
         // - Encoder2
         c.shared.rotary_encoder2.lock(|encoder| {
             c.shared.rotary_encoder2_value.lock(|value| {
@@ -535,7 +536,12 @@ mod app {
                 } else {
                     0
                 };
-                *value += increment;
+                let temp_value = *value as i32 + increment;
+                *value = if temp_value < 0 {
+                    0
+                } else {
+                    temp_value as usize
+                };
             });
         });
         // - Encoder1
@@ -552,7 +558,12 @@ mod app {
                 } else {
                     0
                 };
-                *value += increment;
+                let temp_value = *value as i32 + increment;
+                *value = if temp_value < 0 {
+                    0
+                } else {
+                    temp_value as usize
+                };
             });
         });
     }
