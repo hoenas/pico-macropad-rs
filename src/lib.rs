@@ -1,6 +1,9 @@
 #![no_std]
 #![no_main]
 
+extern crate alloc;
+use alloc::string::String;
+use alloc::vec::Vec;
 use usbd_human_interface_device::page::Keyboard;
 
 #[derive(serde::Deserialize)]
@@ -24,7 +27,7 @@ pub struct MacroConfig {
 #[derive(serde::Deserialize)]
 pub struct LedConfig {
     pub mode: LedMode,
-    pub colors: [LedColor; 16],
+    pub colors: Vec<LedColor>,
     pub color_count: usize,
     pub animation_speed: f32,
 }
@@ -42,10 +45,10 @@ pub struct LedColor(u8, u8, u8);
 
 #[derive(serde::Deserialize)]
 pub struct ButtonConfig {
-    pub display_text: [char; 4],
+    pub display_text: String,
     pub mode: Mode,
     pub delay: usize,
-    pub buttons: [Option<KeyboardCode>; 16],
+    pub buttons: Vec<KeyboardCode>,
 }
 
 #[derive(serde::Deserialize)]
@@ -242,7 +245,7 @@ impl KeyboardCode {
 
 #[derive(serde::Deserialize)]
 pub struct RotaryEncoderConfig {
-    pub display_text: [char; 7],
+    pub display_text: String,
     pub left: ButtonConfig,
     pub right: ButtonConfig,
     pub push: ButtonConfig,

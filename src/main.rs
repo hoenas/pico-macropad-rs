@@ -7,6 +7,12 @@ use panic_halt as _;
 mod app {
     use core::fmt::Debug;
 
+    extern crate alloc;
+
+    use alloc::format;
+    use alloc::string::String;
+    use alloc::vec::Vec;
+    use embedded_alloc::Heap;
     use embedded_hal::digital::StatefulOutputPin;
     use embedded_sdmmc::DirEntry;
     use embedded_sdmmc::ShortFileName;
@@ -198,6 +204,14 @@ mod app {
 
     #[init]
     fn init(mut c: init::Context) -> (Shared, Local, init::Monotonics) {
+        #[global_allocator]
+        static ALLOCATOR: Heap = Heap::empty();
+        {
+            use core::mem::MaybeUninit;
+            const HEAP_SIZE: usize = 1024;
+            static mut HEAP: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
+            unsafe { ALLOCATOR.init(core::ptr::addr_of_mut!(HEAP) as usize, HEAP_SIZE) }
+        }
         // Soft-reset does not release the hardware spinlocks
         // Release them now to avoid a deadlock after debug or watchdog reset
         unsafe {
@@ -344,13 +358,12 @@ mod app {
             Err(_) => blink_signals_loop(&mut led, &mut timer, &BLINK_ERR_4_SHORT),
             Ok(val) => val,
         };
-        let mut config_files = &[""; MAX_FILE_NAMES];
-        let mut config_file_count = 0 as usize;
-        // volume_mgr.iterate_dir(&volume0, &root_dir, |entry| {
-        //     if core::str::from_utf8(&entry.name.extension()).unwrap() == "json" {
-        //         config_files[config_file_count] =                config_file_count += 1;
-        //     }
-        // });
+        let mut config_files = Vec::<String>::new();
+        volume_mgr.iterate_dir(&volume0, &root_dir, |entry| {
+            if core::str::from_utf8(&entry.name.extension()).unwrap() == "json" {
+                config_files.push(format!("{entry:?}"));
+            }
+        });
         // - RGB LEDs
         let (mut pio, sm0, _, _, _) = c.device.PIO0.split(&mut resets);
 
