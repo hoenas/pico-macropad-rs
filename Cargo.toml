@@ -8,6 +8,7 @@ license = "MIT OR Apache-2.0"
 cortex-m = "0.7"
 cortex-m-rt = "0.7"
 embedded-hal = { version = "1.0.0" }
+embedded-io = "0.6.1"
 
 defmt = "1"
 defmt-rtt = "1"
@@ -15,7 +16,7 @@ panic-probe = { version = "1", features = ["print-defmt"] }
 
 # We're using a Pico by default on this template
 rp-pico = { git = "https://github.com/hoenas/rp-hal-boards.git", branch = "dev/update-rp2040-hal"}
-embedded-sdmmc = "0.5.0"
+embedded-sdmmc = "0.9.0"
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde_json = { version = "1.0.149", default-features = false, features = ["alloc"] }
 rotary-encoder-hal = { version = "0.6.0"}
@@ -36,7 +37,7 @@ embedded-graphics = "0.8.2"
 rp2040-hal = "0.12.0"
 itoa = "1.0.17"
 embedded-alloc = "0.5.1"
-
+embedded-hal-bus = "0.3.0"
 
 # cargo build/run
 [profile.dev]

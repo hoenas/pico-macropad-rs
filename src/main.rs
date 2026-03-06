@@ -89,6 +89,10 @@ mod app {
     use smart_leds::SmartLedsWrite;
     use smart_leds::RGB8;
     use ws2812_pio::Ws2812;
+    // USB Device support
+    use usb_device::{class_prelude::*, prelude::*};
+    // USB Human Interface Device (HID) Class support
+    use embedded_hal_bus::spi::ExclusiveDevice;
 
     const DISPLAY_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(250);
     const RGB_LEDS_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(25);
@@ -303,7 +307,7 @@ mod app {
         let mut display: GraphicsMode<_> = Builder::new().connect_i2c(display_i2c).into();
         display.init().unwrap();
         display.clear();
-        display.flush();
+        display.flush().unwrap();
 
         // SDCard
         // - Set up our SPI pins into the correct mode
@@ -321,17 +325,19 @@ mod app {
         );
 
         // - Exchange the uninitialised SPI driver for an initialised one
-        let sdmmc_spi = spi0.init(
+        let sdmmc_spi_bus = spi0.init(
             &mut resets,
             clocks.peripheral_clock.freq(),
             400.kHz(), // card initialization happens at low baud rate
             embedded_hal::spi::MODE_0,
         );
+        let sdmmc_spi = ExclusiveDevice::new_no_delay(sdmmc_spi_bus, sdmmc_spi_cs).unwrap();
+
         display.clear();
-        display.flush();
+        display.flush().unwrap();
 
         let mut timer = Timer::new(c.device.TIMER, &mut resets, &clocks);
-        let sdcard = SdCard::new(sdmmc_spi, sdmmc_spi_cs, timer);
+        let sdcard = SdCard::new(sdmmc_spi, timer);
         let mut volume_mgr = embedded_sdmmc::VolumeManager::new(sdcard, DummyTimesource::default());
         Text::with_alignment(
             "Opening SDCard...",
@@ -342,8 +348,7 @@ mod app {
         .draw(&mut display)
         .unwrap();
         display.flush();
-
-        let mut volume0 = match volume_mgr.get_volume(embedded_sdmmc::VolumeIdx(0)) {
+        let mut volume0 = match volume_mgr.open_volume(embedded_sdmmc::VolumeIdx(0)) {
             Err(_) => blink_signals_loop(&mut led, &mut timer, &BLINK_ERR_3_SHORT),
             Ok(val) => val,
         };
@@ -355,21 +360,22 @@ mod app {
         )
         .draw(&mut display)
         .unwrap();
-        display.flush();
+        display.flush().unwrap();
 
-        let mut root_dir = match volume_mgr.open_root_dir(&volume0) {
+        let root_dir = match volume0.open_root_dir() {
             Err(_) => blink_signals_loop(&mut led, &mut timer, &BLINK_ERR_4_SHORT),
             Ok(val) => val,
         };
         let mut config_files = Vec::<String>::new();
-        volume_mgr.iterate_dir(&volume0, &root_dir, |entry| {
-            let config_file: String = format!(
-                "{}.{}",
-                str::from_utf8(entry.name.base_name()).unwrap(),
-                str::from_utf8(entry.name.extension()).unwrap()
-            );
-            config_files.push(config_file);
-        });
+        let mut filename_buffer = [0 as u8; 50];
+        let mut lfn_buffer = embedded_sdmmc::LfnBuffer::new(&mut filename_buffer);
+        root_dir
+            .iterate_dir_lfn(&mut lfn_buffer, |entry, filename| {
+                if let Some(filename) = filename {
+                    config_files.push(String::from(filename));
+                }
+            })
+            .unwrap();
         // - RGB LEDs
         let (mut pio, sm0, _, _, _) = c.device.PIO0.split(&mut resets);
 
