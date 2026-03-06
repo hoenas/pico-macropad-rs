@@ -444,7 +444,7 @@ mod app {
         c.shared
             .rotary_encoder3_value
             .lock(|value| rotary3_value = *value);
-        let _menu_index = (rotary1_value / 4);
+        let _menu_index = rotary1_value / 4;
 
         let mut alarm = c.shared.display_alarm;
         (alarm).lock(|a| {
