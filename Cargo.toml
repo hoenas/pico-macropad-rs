@@ -38,6 +38,7 @@ rp2040-hal = "0.12.0"
 itoa = "1.0.17"
 embedded-alloc = "0.5.1"
 embedded-hal-bus = "0.3.0"
+embedded-menu = "0.6.1"
 
 # cargo build/run
 [profile.dev]

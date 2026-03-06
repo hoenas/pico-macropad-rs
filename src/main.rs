@@ -5,22 +5,20 @@ use panic_halt as _;
 
 #[rtic::app(device = rp_pico::hal::pac, peripherals = true)]
 mod app {
-    use core::fmt::Debug;
 
     extern crate alloc;
 
-    use alloc::format;
     use alloc::string::String;
     use alloc::vec::Vec;
     use embedded_alloc::Heap;
     use embedded_hal::digital::StatefulOutputPin;
-    use embedded_sdmmc::DirEntry;
-    use embedded_sdmmc::ShortFileName;
+    use embedded_menu::items::MenuItem;
+
     use fugit::MicrosDurationU32;
     use rotary_encoder_hal::DefaultPhase;
     use rp_pico::XOSC_CRYSTAL_FREQ;
     // The macro for our start-up function
-    use rp_pico::entry;
+
     // info!() and error!() macros for printing information to the debug output
     use defmt::*;
     use defmt_rtt as _;
@@ -30,13 +28,13 @@ mod app {
     use panic_halt as _;
 
     use hal::gpio::Pin;
-    use rp2040_hal::dma::bidirectional::Config;
+
     use rp2040_hal::gpio::FunctionPio0;
     use rp2040_hal::gpio::Interrupt::{EdgeHigh, EdgeLow};
     use rp_pico::hal::clocks::init_clocks_and_plls;
     use rp_pico::hal::gpio::bank0::*;
     use rp_pico::hal::gpio::FunctionI2c;
-    use rp_pico::hal::gpio::FunctionNull;
+
     use rp_pico::hal::gpio::FunctionSio;
     use rp_pico::hal::gpio::FunctionSioOutput;
     use rp_pico::hal::gpio::PullDown;
@@ -65,7 +63,7 @@ mod app {
     // Link in the embedded_sdmmc crate.
     // The `SdMmcSpi` is used for block level access to the card.
     // And the `VolumeManager` gives access to the FAT filesystem functions.
-    use embedded_sdmmc::{Mode, SdCard, TimeSource, Timestamp, VolumeIdx, VolumeManager};
+    use embedded_sdmmc::{SdCard, TimeSource, Timestamp};
 
     use embedded_hal::delay::DelayNs;
     use embedded_hal::digital::OutputPin;
@@ -75,9 +73,6 @@ mod app {
         mono_font::{ascii::FONT_6X10, MonoTextStyle},
         pixelcolor::BinaryColor,
         prelude::*,
-        primitives::{
-            Circle, PrimitiveStyle, PrimitiveStyleBuilder, Rectangle, StrokeAlignment, Triangle,
-        },
         text::{Alignment, Text},
     };
     use rotary_encoder_hal::{Direction, Rotary};
@@ -90,11 +85,11 @@ mod app {
     use smart_leds::RGB8;
     use ws2812_pio::Ws2812;
     // USB Device support
-    use usb_device::{class_prelude::*, prelude::*};
+    use usb_device::class_prelude::*;
     // USB Human Interface Device (HID) Class support
     use embedded_hal_bus::spi::ExclusiveDevice;
 
-    const DISPLAY_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(250);
+    const DISPLAY_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(50);
     const RGB_LEDS_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(25);
     const NUM_LEDS: usize = 7;
     const MAX_FILE_NAMES: usize = 64;
@@ -121,7 +116,7 @@ mod app {
     }
 
     #[shared]
-    struct Shared {
+    struct Shared<'a> {
         timer: hal::Timer,
         display_alarm: hal::timer::Alarm0,
         rgb_leds_alarm: hal::timer::Alarm1,
@@ -159,7 +154,6 @@ mod app {
             >,
         >,
         rgb_leds: Ws2812<PIO0, SM0, CountDown, Pin<Gpio28, FunctionPio0, PullDown>>,
-        config_files: Vec<String>,
     }
 
     // Setup some blinking codes:
@@ -210,12 +204,12 @@ mod app {
     struct Local {}
 
     #[init]
-    fn init(mut c: init::Context) -> (Shared, Local, init::Monotonics) {
+    fn init(c: init::Context) -> (Shared, Local, init::Monotonics) {
         #[global_allocator]
         static ALLOCATOR: Heap = Heap::empty();
         {
             use core::mem::MaybeUninit;
-            const HEAP_SIZE: usize = 1024;
+            const HEAP_SIZE: usize = 10240;
             static mut HEAP: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
             unsafe { ALLOCATOR.init(core::ptr::addr_of_mut!(HEAP) as usize, HEAP_SIZE) }
         }
@@ -338,7 +332,7 @@ mod app {
 
         let mut timer = Timer::new(c.device.TIMER, &mut resets, &clocks);
         let sdcard = SdCard::new(sdmmc_spi, timer);
-        let mut volume_mgr = embedded_sdmmc::VolumeManager::new(sdcard, DummyTimesource::default());
+        let volume_mgr = embedded_sdmmc::VolumeManager::new(sdcard, DummyTimesource::default());
         Text::with_alignment(
             "Opening SDCard...",
             display.bounding_box().top_left + Point::new(0, 10),
@@ -347,8 +341,8 @@ mod app {
         )
         .draw(&mut display)
         .unwrap();
-        display.flush();
-        let mut volume0 = match volume_mgr.open_volume(embedded_sdmmc::VolumeIdx(0)) {
+        display.flush().unwrap();
+        let volume0 = match volume_mgr.open_volume(embedded_sdmmc::VolumeIdx(0)) {
             Err(_) => blink_signals_loop(&mut led, &mut timer, &BLINK_ERR_3_SHORT),
             Ok(val) => val,
         };
@@ -366,19 +360,27 @@ mod app {
             Err(_) => blink_signals_loop(&mut led, &mut timer, &BLINK_ERR_4_SHORT),
             Ok(val) => val,
         };
-        let mut config_files = Vec::<String>::new();
-        let mut filename_buffer = [0 as u8; 50];
+        let mut filename_buffer = [0_u8; 50];
         let mut lfn_buffer = embedded_sdmmc::LfnBuffer::new(&mut filename_buffer);
+        let mut menu_items = Vec::new();
         root_dir
-            .iterate_dir_lfn(&mut lfn_buffer, |entry, filename| {
+            .iterate_dir_lfn(&mut lfn_buffer, |_, filename| {
                 if let Some(filename) = filename {
-                    let filename = String::from(filename);
                     if filename.ends_with(".json") {
-                        config_files.push(filename);
+                        menu_items.push(MenuItem::new(String::from(filename), ""));
                     }
                 }
             })
             .unwrap();
+        let style =
+            embedded_menu::MenuStyle::new(BinaryColor::On).with_animated_selection_indicator(10);
+        let mut menu = embedded_menu::Menu::with_style("Load Config", style)
+            .add_menu_items(menu_items)
+            .build();
+        display.clear();
+        menu.update(&display);
+        menu.draw(&mut display).unwrap();
+        display.flush().unwrap();
         // - RGB LEDs
         let (mut pio, sm0, _, _, _) = c.device.PIO0.split(&mut resets);
 
@@ -416,7 +418,6 @@ mod app {
                 rotary_encoder3_value: 0,
                 display,
                 rgb_leds,
-                config_files,
             },
             Local {},
             init::Monotonics(),
@@ -426,7 +427,7 @@ mod app {
     #[task(
         binds = TIMER_IRQ_0,
         priority = 3,
-        shared = [timer, display_alarm, led, display, rotary_encoder1_value, rotary_encoder2_value, rotary_encoder3_value, config_files],
+        shared = [timer, display_alarm, led, display, rotary_encoder1_value, rotary_encoder2_value, rotary_encoder3_value],
         local = [tog: bool = true],
     )]
     fn display_update(mut c: display_update::Context) {
@@ -443,24 +444,7 @@ mod app {
         c.shared
             .rotary_encoder3_value
             .lock(|value| rotary3_value = *value);
-        let menu_index = (rotary1_value / 4) as usize;
-        (c.shared.display, c.shared.config_files).lock(|display, config_files| {
-            display.clear();
-            for (i, menu_item) in config_files.iter().enumerate() {
-                if i >= MENU_ENTRY_COUNT {
-                    break;
-                }
-                Text::with_alignment(
-                    menu_item,
-                    display.bounding_box().top_left + Point::new(0, ((i + 1) * 10) as i32),
-                    CHARACTER_STYLE,
-                    Alignment::Left,
-                )
-                .draw(display)
-                .unwrap();
-            }
-            display.flush();
-        });
+        let _menu_index = (rotary1_value / 4);
 
         let mut alarm = c.shared.display_alarm;
         (alarm).lock(|a| {
@@ -477,7 +461,7 @@ mod app {
     )]
     fn leds_update(mut c: leds_update::Context) {
         *c.local.animation_counter += 1;
-        let counter = c.local.animation_counter;
+        let _counter = c.local.animation_counter;
 
         c.shared.rgb_leds.lock(|rgb_leds| {
             // Write RGB values
@@ -529,7 +513,7 @@ mod app {
                 };
             });
         });
-        c.shared.rotary_encoder1_switch.lock(|switch| {});
+        c.shared.rotary_encoder1_switch.lock(|_switch| {});
 
         // - Encoder2
         c.shared.rotary_encoder2.lock(|encoder| {
