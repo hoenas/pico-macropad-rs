@@ -372,7 +372,10 @@ mod app {
         root_dir
             .iterate_dir_lfn(&mut lfn_buffer, |entry, filename| {
                 if let Some(filename) = filename {
-                    config_files.push(String::from(filename));
+                    let filename = String::from(filename);
+                    if filename.ends_with(".json") {
+                        config_files.push(filename);
+                    }
                 }
             })
             .unwrap();
