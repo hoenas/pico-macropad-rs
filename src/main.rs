@@ -117,8 +117,9 @@ mod app {
         }
     }
 
-    struct Encoder {
+    pub struct Encoder {
         pub value: usize,
+        pub delta: i8,
         pub button: bool,
     }
     pub struct Encoders {
@@ -131,14 +132,17 @@ mod app {
             Self {
                 encoder1: Encoder {
                     value: 0,
+                    delta: 0,
                     button: false,
                 },
                 encoder2: Encoder {
                     value: 0,
+                    delta: 0,
                     button: false,
                 },
                 encoder3: Encoder {
                     value: 0,
+                    delta: 0,
                     button: false,
                 },
             }
@@ -575,6 +579,7 @@ mod app {
             } else {
                 encoder_1_value.try_into().unwrap()
             };
+            encoders.encoder1.delta = encoder1_increment.try_into().unwrap();
             encoders.encoder1.button = encoder1_switch_value;
             // - Encoder2
             let encoder_2_value = encoders.encoder2.value as i32 + encoder2_increment;
@@ -583,6 +588,7 @@ mod app {
             } else {
                 encoder_2_value.try_into().unwrap()
             };
+            encoders.encoder2.delta = encoder2_increment.try_into().unwrap();
             encoders.encoder2.button = encoder2_switch_value;
             // - Encoder3
             let encoder_3_value = encoders.encoder3.value as i32 + encoder3_increment;
@@ -591,6 +597,7 @@ mod app {
             } else {
                 encoder_3_value.try_into().unwrap()
             };
+            encoders.encoder3.delta = encoder3_increment.try_into().unwrap();
             encoders.encoder3.button = encoder3_switch_value;
         });
     }
