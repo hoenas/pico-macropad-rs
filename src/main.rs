@@ -7,9 +7,6 @@ use panic_halt as _;
 mod app {
 
     extern crate alloc;
-
-    use core::str::EncodeUtf16;
-
     use alloc::string::String;
     use alloc::vec::Vec;
     use embedded_alloc::Heap;
@@ -17,6 +14,7 @@ mod app {
     use embedded_menu::items::MenuItem;
 
     use fugit::MicrosDurationU32;
+    use pico_macropad_rs::MacroConfig;
     use rotary_encoder_hal::DefaultPhase;
     use rp_pico::XOSC_CRYSTAL_FREQ;
     // The macro for our start-up function
@@ -32,7 +30,7 @@ mod app {
     use hal::gpio::Pin;
 
     use rp2040_hal::gpio::FunctionPio0;
-    use rp2040_hal::gpio::Interrupt::{EdgeHigh, EdgeLow};
+    use rp2040_hal::gpio::Interrupt::{LevelHigh, LevelLow};
     use rp_pico::hal::clocks::init_clocks_and_plls;
     use rp_pico::hal::gpio::bank0::*;
     use rp_pico::hal::gpio::FunctionI2c;
@@ -91,13 +89,13 @@ mod app {
     // USB Human Interface Device (HID) Class support
     use embedded_hal_bus::spi::ExclusiveDevice;
 
-    const DISPLAY_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(50);
+    const DISPLAY_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(25);
     const RGB_LEDS_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(25);
     const NUM_LEDS: usize = 7;
     const MAX_FILE_NAMES: usize = 64;
     const CHARACTER_STYLE: MonoTextStyle<BinaryColor> =
         MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
-    const MENU_ENTRY_COUNT: usize = 6;
+    const ENCODER_DOWNSAMPLING_FACTOR: usize = 4;
     /// A dummy timesource, which is mostly important for creating files.
     #[derive(Default)]
     struct DummyTimesource();
@@ -119,6 +117,7 @@ mod app {
 
     pub struct Encoder {
         pub value: usize,
+        pub value_changed: bool,
         pub delta: i8,
         pub button: bool,
     }
@@ -132,16 +131,19 @@ mod app {
             Self {
                 encoder1: Encoder {
                     value: 0,
+                    value_changed: false,
                     delta: 0,
                     button: false,
                 },
                 encoder2: Encoder {
                     value: 0,
+                    value_changed: false,
                     delta: 0,
                     button: false,
                 },
                 encoder3: Encoder {
                     value: 0,
+                    value_changed: false,
                     delta: 0,
                     button: false,
                 },
@@ -205,6 +207,9 @@ mod app {
             embedded_menu::selection_indicator::style::Line,
             BinaryColor,
         >,
+        menu_mode: bool,
+        ticks_since_menu_state_change: usize,
+        display_update_interval: usize,
     }
 
     // Setup some blinking codes:
@@ -249,6 +254,10 @@ mod app {
         loop {
             blink_signals(pin, delay, sig);
         }
+    }
+
+    fn check_state_changed(interval: usize, counter: usize) -> bool {
+        counter as f32 / interval as f32 > 0.75
     }
 
     #[init]
@@ -305,34 +314,34 @@ mod app {
         // Rotary encoders
         // - Encoder 1
         let gpio10 = pins.gpio10.into_floating_input();
-        gpio10.set_interrupt_enabled(EdgeHigh, true);
-        gpio10.set_interrupt_enabled(EdgeLow, true);
+        gpio10.set_interrupt_enabled(LevelHigh, true);
+        gpio10.set_interrupt_enabled(LevelLow, true);
         let gpio11 = pins.gpio11.into_floating_input();
-        gpio11.set_interrupt_enabled(EdgeHigh, true);
-        gpio11.set_interrupt_enabled(EdgeLow, true);
+        gpio11.set_interrupt_enabled(LevelHigh, true);
+        gpio11.set_interrupt_enabled(LevelLow, true);
         let rotary_encoder1 = Rotary::new(gpio10, gpio11);
         let rotary_encoder1_switch = pins.gpio12.into_pull_up_input();
-        rotary_encoder1_switch.set_interrupt_enabled(EdgeLow, true);
+        rotary_encoder1_switch.set_interrupt_enabled(LevelLow, true);
         // - Encoder 2
         let gpio13 = pins.gpio13.into_floating_input();
-        gpio13.set_interrupt_enabled(EdgeLow, true);
-        gpio13.set_interrupt_enabled(EdgeHigh, true);
+        gpio13.set_interrupt_enabled(LevelLow, true);
+        gpio13.set_interrupt_enabled(LevelHigh, true);
         let gpio14 = pins.gpio14.into_floating_input();
-        gpio14.set_interrupt_enabled(EdgeHigh, true);
-        gpio14.set_interrupt_enabled(EdgeLow, true);
+        gpio14.set_interrupt_enabled(LevelHigh, true);
+        gpio14.set_interrupt_enabled(LevelLow, true);
         let rotary_encoder2 = Rotary::new(gpio13, gpio14);
         let rotary_encoder2_switch = pins.gpio15.into_pull_up_input();
-        rotary_encoder2_switch.set_interrupt_enabled(EdgeLow, true);
+        rotary_encoder2_switch.set_interrupt_enabled(LevelLow, true);
         // - Encoder 3
         let gpio20 = pins.gpio20.into_floating_input();
-        gpio20.set_interrupt_enabled(EdgeLow, true);
-        gpio20.set_interrupt_enabled(EdgeHigh, true);
+        gpio20.set_interrupt_enabled(LevelLow, true);
+        gpio20.set_interrupt_enabled(LevelHigh, true);
         let gpio21 = pins.gpio21.into_floating_input();
-        gpio21.set_interrupt_enabled(EdgeHigh, true);
-        gpio21.set_interrupt_enabled(EdgeLow, true);
+        gpio21.set_interrupt_enabled(LevelHigh, true);
+        gpio21.set_interrupt_enabled(LevelLow, true);
         let rotary_encoder3 = Rotary::new(gpio20, gpio21);
         let rotary_encoder3_switch = pins.gpio22.into_pull_up_input();
-        rotary_encoder3_switch.set_interrupt_enabled(EdgeLow, true);
+        rotary_encoder3_switch.set_interrupt_enabled(LevelLow, true);
         // Display
         let display_sda_pin: hal::gpio::Pin<_, hal::gpio::FunctionI2C, _> =
             pins.gpio26.reconfigure();
@@ -422,20 +431,9 @@ mod app {
             .unwrap();
         let style = embedded_menu::MenuStyle::new(BinaryColor::On)
             .with_scrollbar_style(embedded_menu::DisplayScrollbar::Auto);
-        let mut menu = embedded_menu::Menu::with_style("Load Config", style)
+        let menu = embedded_menu::Menu::with_style("Load Config", style)
             .add_menu_items(menu_items)
             .build();
-        display.clear();
-        menu.update(&display);
-        menu.draw(&mut display).unwrap();
-        display.flush().unwrap();
-        blink_signals(&mut led, &mut timer, &BLINK_OK_LONG);
-        display.clear();
-        menu.interact(embedded_menu::interaction::Interaction::Navigation(
-            embedded_menu::interaction::Navigation::Next,
-        ));
-        menu.update(&display);
-        menu.draw(&mut display).unwrap();
         // - RGB LEDs
         let (mut pio, sm0, _, _, _) = c.device.PIO0.split(&mut resets);
 
@@ -474,6 +472,9 @@ mod app {
                 display,
                 rgb_leds,
                 menu,
+                menu_mode: true,
+                ticks_since_menu_state_change: 0,
+                display_update_interval: DISPLAY_UPDATE.to_millis() as usize,
             },
             init::Monotonics(),
         )
@@ -482,11 +483,60 @@ mod app {
     #[task(
         binds = TIMER_IRQ_0,
         priority = 3,
-        shared = [timer, display_alarm, led],
-        local = [tog: bool = true, display],
+        shared = [timer, display_alarm, led, encoders, ],
+        local = [tog: bool = true, display, menu, menu_mode, ticks_since_menu_state_change, display_update_interval],
     )]
     fn display_update(mut c: display_update::Context) {
+        c.local.display.clear();
         c.shared.led.lock(|l| l.set_high().unwrap());
+        // Check if we are in menu mode
+        let mut menu_mode = *c.local.menu_mode;
+        let mut menu_button_pressed = false;
+        let mut menu_button_value_changed = false;
+        c.shared.encoders.lock(|encoders| {
+            menu_button_pressed = encoders.encoder1.button;
+            menu_button_value_changed = encoders.encoder1.value_changed;
+        });
+        // Switch to menu mode if we are currently not in menu mode and encoder1 button is pressed
+        if check_state_changed(
+            *c.local.ticks_since_menu_state_change,
+            *c.local.display_update_interval,
+        ) && !menu_mode
+            && menu_button_pressed
+        {
+            *c.local.menu_mode = true;
+            *c.local.ticks_since_menu_state_change = 0;
+        }
+        // Update menu
+        if menu_mode {
+            let menu = c.local.menu;
+            // Check if the encoder has been rotated
+            let mut menu_position = 0;
+            c.shared.encoders.lock(|encoders| {
+                menu_position = encoders.encoder1.value;
+            });
+            menu_position /= ENCODER_DOWNSAMPLING_FACTOR;
+            menu.interact(embedded_menu::interaction::Interaction::Navigation(
+                embedded_menu::interaction::Navigation::JumpTo(menu_position),
+            ));
+            if check_state_changed(
+                *c.local.ticks_since_menu_state_change,
+                *c.local.display_update_interval,
+            ) && menu_button_pressed
+            {
+                menu.interact(embedded_menu::interaction::Interaction::Action(
+                    embedded_menu::interaction::Action::Select,
+                ));
+                *c.local.menu_mode = false;
+                *c.local.ticks_since_menu_state_change = 0;
+            }
+            menu.update(c.local.display);
+            menu.draw(c.local.display);
+        } else {
+            // TODO: Display key map related stuff
+        }
+        c.local.display.flush().unwrap();
+        *c.local.ticks_since_menu_state_change += 1;
         let mut alarm = c.shared.display_alarm;
         (alarm).lock(|a| {
             a.clear_interrupt();
@@ -579,6 +629,7 @@ mod app {
             } else {
                 encoder_1_value.try_into().unwrap()
             };
+            encoders.encoder1.value_changed = !(encoders.encoder1.button && encoder1_switch_value);
             encoders.encoder1.delta = encoder1_increment.try_into().unwrap();
             encoders.encoder1.button = encoder1_switch_value;
             // - Encoder2
@@ -588,6 +639,7 @@ mod app {
             } else {
                 encoder_2_value.try_into().unwrap()
             };
+            encoders.encoder2.value_changed = !(encoders.encoder2.button && encoder2_switch_value);
             encoders.encoder2.delta = encoder2_increment.try_into().unwrap();
             encoders.encoder2.button = encoder2_switch_value;
             // - Encoder3
@@ -597,6 +649,7 @@ mod app {
             } else {
                 encoder_3_value.try_into().unwrap()
             };
+            encoders.encoder3.value_changed = !(encoders.encoder3.button && encoder3_switch_value);
             encoders.encoder3.delta = encoder3_increment.try_into().unwrap();
             encoders.encoder3.button = encoder3_switch_value;
         });
