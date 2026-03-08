@@ -14,7 +14,7 @@ mod app {
     use embedded_menu::items::MenuItem;
 
     use fugit::MicrosDurationU32;
-    use pico_macropad_rs::MacroConfig;
+    use pico_macropad_rs::*;
     use rotary_encoder_hal::DefaultPhase;
     use rp_pico::XOSC_CRYSTAL_FREQ;
     // The macro for our start-up function
@@ -63,7 +63,7 @@ mod app {
     // Link in the embedded_sdmmc crate.
     // The `SdMmcSpi` is used for block level access to the card.
     // And the `VolumeManager` gives access to the FAT filesystem functions.
-    use embedded_sdmmc::{SdCard, TimeSource, Timestamp};
+    use embedded_sdmmc::{SdCard, ShortFileName, TimeSource, Timestamp};
 
     use embedded_hal::delay::DelayNs;
     use embedded_hal::digital::OutputPin;
@@ -158,6 +158,7 @@ mod app {
         rgb_leds_alarm: hal::timer::Alarm1,
         led: Pin<Gpio25, FunctionSioOutput, PullNone>,
         encoders: Encoders,
+        config: MacroConfig,
     }
 
     #[local]
@@ -237,13 +238,13 @@ mod app {
             let length = if *bit > 0 { *bit } else { 1 };
 
             for _ in 0..length {
-                delay.delay_ms(100);
+                delay.delay_ms(200);
             }
         }
 
         pin.set_low().unwrap();
 
-        delay.delay_ms(500);
+        delay.delay_ms(250);
     }
 
     fn blink_signals_loop(
@@ -417,13 +418,13 @@ mod app {
             Err(_) => blink_signals_loop(&mut led, &mut timer, &BLINK_ERR_4_SHORT),
             Ok(val) => val,
         };
-        let mut filename_buffer = [0_u8; 50];
-        let mut lfn_buffer = embedded_sdmmc::LfnBuffer::new(&mut filename_buffer);
+        let mut buffer = [0_u8; 2048];
+        let mut lfn_buffer = embedded_sdmmc::LfnBuffer::new(&mut buffer);
         let mut menu_items = Vec::new();
         root_dir
             .iterate_dir_lfn(&mut lfn_buffer, |_, filename| {
                 if let Some(filename) = filename {
-                    if filename.ends_with(".json") {
+                    if filename.ends_with(".cfg") {
                         menu_items.push(MenuItem::new(String::from(filename), ""));
                     }
                 }
@@ -444,6 +445,22 @@ mod app {
             clocks.peripheral_clock.freq(),
             timer.count_down(),
         );
+        // Test loading file
+        let short_file_name = ShortFileName::create_from_str("out.cfg").unwrap();
+        let opened_file = root_dir
+            .open_file_in_dir(
+                short_file_name,
+                embedded_sdmmc::Mode::ReadWriteCreateOrAppend,
+            )
+            .unwrap();
+
+        blink_signals(&mut led, &mut timer, &BLINK_OK_LONG);
+
+        blink_signals(&mut led, &mut timer, &BLINK_OK_LONG);
+        let bytes_read = opened_file.read(&mut buffer).unwrap();
+        blink_signals(&mut led, &mut timer, &BLINK_OK_LONG);
+        let config: MacroConfig = serde_json::from_slice(&buffer[..bytes_read]).unwrap();
+        blink_signals(&mut led, &mut timer, &BLINK_OK_LONG);
 
         // Timer for display update
         let mut display_alarm = timer.alarm_0().unwrap();
@@ -461,6 +478,7 @@ mod app {
                 rgb_leds_alarm,
                 led,
                 encoders: Encoders::default(),
+                config: config,
             },
             Local {
                 rotary_encoder1,
