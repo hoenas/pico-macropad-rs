@@ -5,8 +5,9 @@ extern crate alloc;
 use alloc::string::String;
 use alloc::vec::Vec;
 use usbd_human_interface_device::page::Keyboard;
+pub mod test_config;
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 pub struct MacroConfig {
     pub button0: ButtonConfig,
     pub button1: ButtonConfig,
@@ -21,44 +22,16 @@ pub struct MacroConfig {
     pub rotary_encoder1: RotaryEncoderConfig,
     pub rotary_encoder2: RotaryEncoderConfig,
     pub rotary_encover3: RotaryEncoderConfig,
-    pub led_config: LedConfig,
 }
 
-#[derive(serde::Deserialize)]
-pub struct LedConfig {
-    pub mode: LedMode,
-    pub colors: Vec<LedColor>,
-    pub color_count: usize,
-    pub animation_speed: f32,
-}
-
-#[derive(serde::Deserialize)]
-pub enum LedMode {
-    Constant,
-    Fade,
-    Pulse,
-    Wave,
-}
-
-#[derive(serde::Deserialize)]
-pub struct LedColor(u8, u8, u8);
-
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 pub struct ButtonConfig {
     pub display_text: String,
-    pub mode: Mode,
-    pub delay: usize,
-    pub buttons: Vec<KeyboardCode>,
-}
-
-#[derive(serde::Deserialize)]
-pub enum Mode {
-    Cycle,
-    Sequence,
+    pub button: KeyboardCode,
 }
 
 #[repr(u8)]
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 pub enum KeyboardCode {
     NoEventIndicated = 0x00,
     ErrorRollOver = 0x01,
@@ -243,7 +216,7 @@ impl KeyboardCode {
     }
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 pub struct RotaryEncoderConfig {
     pub display_text: String,
     pub left: ButtonConfig,
