@@ -8,10 +8,12 @@ mod app {
 
     extern crate alloc;
 
+    use core::str::EncodeUtf16;
+
     use alloc::string::String;
     use alloc::vec::Vec;
     use embedded_alloc::Heap;
-    use embedded_hal::digital::StatefulOutputPin;
+    use embedded_hal::digital::{InputPin, StatefulOutputPin};
     use embedded_menu::items::MenuItem;
 
     use fugit::MicrosDurationU32;
@@ -115,32 +117,62 @@ mod app {
         }
     }
 
+    struct Encoder {
+        pub value: usize,
+        pub button: bool,
+    }
+    pub struct Encoders {
+        pub encoder1: Encoder,
+        pub encoder2: Encoder,
+        pub encoder3: Encoder,
+    }
+    impl Encoders {
+        pub fn default() -> Self {
+            Self {
+                encoder1: Encoder {
+                    value: 0,
+                    button: false,
+                },
+                encoder2: Encoder {
+                    value: 0,
+                    button: false,
+                },
+                encoder3: Encoder {
+                    value: 0,
+                    button: false,
+                },
+            }
+        }
+    }
+
     #[shared]
-    struct Shared<'a> {
+    struct Shared {
         timer: hal::Timer,
         display_alarm: hal::timer::Alarm0,
         rgb_leds_alarm: hal::timer::Alarm1,
         led: Pin<Gpio25, FunctionSioOutput, PullNone>,
+        encoders: Encoders,
+    }
+
+    #[local]
+    struct Local {
         rotary_encoder1: Rotary<
             Pin<Gpio10, FunctionSio<SioInput>, PullNone>,
             Pin<Gpio11, FunctionSio<SioInput>, PullNone>,
             DefaultPhase,
         >,
-        rotary_encoder1_value: usize,
         rotary_encoder1_switch: Pin<Gpio12, FunctionSio<SioInput>, PullUp>,
         rotary_encoder2: Rotary<
             Pin<Gpio13, FunctionSio<SioInput>, PullNone>,
             Pin<Gpio14, FunctionSio<SioInput>, PullNone>,
             DefaultPhase,
         >,
-        rotary_encoder2_value: usize,
         rotary_encoder2_switch: Pin<Gpio15, FunctionSio<SioInput>, PullUp>,
         rotary_encoder3: Rotary<
             Pin<Gpio20, FunctionSio<SioInput>, PullNone>,
             Pin<Gpio21, FunctionSio<SioInput>, PullNone>,
             DefaultPhase,
         >,
-        rotary_encoder3_value: usize,
         rotary_encoder3_switch: Pin<Gpio22, FunctionSio<SioInput>, PullUp>,
         display: GraphicsMode<
             I2cInterface<
@@ -154,6 +186,21 @@ mod app {
             >,
         >,
         rgb_leds: Ws2812<PIO0, SM0, CountDown, Pin<Gpio28, FunctionPio0, PullDown>>,
+        menu: embedded_menu::Menu<
+            &'static str,
+            embedded_menu::interaction::programmed::Programmed,
+            embedded_layout::prelude::Chain<
+                embedded_menu::collection::MenuItems<
+                    Vec<MenuItem<String, (), &'static str, true>>,
+                    MenuItem<String, (), &'static str, true>,
+                    (),
+                >,
+            >,
+            (),
+            embedded_menu::selection_indicator::StaticPosition,
+            embedded_menu::selection_indicator::style::Line,
+            BinaryColor,
+        >,
     }
 
     // Setup some blinking codes:
@@ -199,9 +246,6 @@ mod app {
             blink_signals(pin, delay, sig);
         }
     }
-
-    #[local]
-    struct Local {}
 
     #[init]
     fn init(c: init::Context) -> (Shared, Local, init::Monotonics) {
@@ -372,8 +416,8 @@ mod app {
                 }
             })
             .unwrap();
-        let style =
-            embedded_menu::MenuStyle::new(BinaryColor::On).with_animated_selection_indicator(10);
+        let style = embedded_menu::MenuStyle::new(BinaryColor::On)
+            .with_scrollbar_style(embedded_menu::DisplayScrollbar::Auto);
         let mut menu = embedded_menu::Menu::with_style("Load Config", style)
             .add_menu_items(menu_items)
             .build();
@@ -381,6 +425,13 @@ mod app {
         menu.update(&display);
         menu.draw(&mut display).unwrap();
         display.flush().unwrap();
+        blink_signals(&mut led, &mut timer, &BLINK_OK_LONG);
+        display.clear();
+        menu.interact(embedded_menu::interaction::Interaction::Navigation(
+            embedded_menu::interaction::Navigation::Next,
+        ));
+        menu.update(&display);
+        menu.draw(&mut display).unwrap();
         // - RGB LEDs
         let (mut pio, sm0, _, _, _) = c.device.PIO0.split(&mut resets);
 
@@ -407,19 +458,19 @@ mod app {
                 display_alarm,
                 rgb_leds_alarm,
                 led,
+                encoders: Encoders::default(),
+            },
+            Local {
                 rotary_encoder1,
                 rotary_encoder1_switch,
-                rotary_encoder1_value: 0,
                 rotary_encoder2,
                 rotary_encoder2_switch,
-                rotary_encoder2_value: 0,
                 rotary_encoder3,
                 rotary_encoder3_switch,
-                rotary_encoder3_value: 0,
                 display,
                 rgb_leds,
+                menu,
             },
-            Local {},
             init::Monotonics(),
         )
     }
@@ -427,25 +478,11 @@ mod app {
     #[task(
         binds = TIMER_IRQ_0,
         priority = 3,
-        shared = [timer, display_alarm, led, display, rotary_encoder1_value, rotary_encoder2_value, rotary_encoder3_value],
-        local = [tog: bool = true],
+        shared = [timer, display_alarm, led],
+        local = [tog: bool = true, display],
     )]
     fn display_update(mut c: display_update::Context) {
         c.shared.led.lock(|l| l.set_high().unwrap());
-        let mut rotary1_value = 0;
-        let mut rotary2_value = 0;
-        let mut rotary3_value = 0;
-        c.shared
-            .rotary_encoder1_value
-            .lock(|value| rotary1_value = *value);
-        c.shared
-            .rotary_encoder2_value
-            .lock(|value| rotary2_value = *value);
-        c.shared
-            .rotary_encoder3_value
-            .lock(|value| rotary3_value = *value);
-        let _menu_index = rotary1_value / 4;
-
         let mut alarm = c.shared.display_alarm;
         (alarm).lock(|a| {
             a.clear_interrupt();
@@ -456,21 +493,19 @@ mod app {
     #[task(
         binds = TIMER_IRQ_1,
         priority = 4,
-        shared = [timer, rgb_leds_alarm, rgb_leds, ],
-        local = [tog: bool = true, animation_counter: usize = 0],
+        shared = [timer, rgb_leds_alarm, ],
+        local = [tog: bool = true, animation_counter: usize = 0, rgb_leds],
     )]
     fn leds_update(mut c: leds_update::Context) {
         *c.local.animation_counter += 1;
         let _counter = c.local.animation_counter;
 
-        c.shared.rgb_leds.lock(|rgb_leds| {
-            // Write RGB values
-            let mut data: [RGB8; NUM_LEDS] = [RGB8::default(); NUM_LEDS];
-            for i in 0..data.len() {
-                data[i] = RGB8::new(50, 0, 50);
-            }
-            rgb_leds.write(data.iter().cloned());
-        });
+        // Write RGB values
+        let mut data: [RGB8; NUM_LEDS] = [RGB8::default(); NUM_LEDS];
+        for i in 0..data.len() {
+            data[i] = RGB8::new(50, 0, 50);
+        }
+        c.local.rgb_leds.write(data.iter().cloned());
 
         let mut alarm = c.shared.rgb_leds_alarm;
         (alarm).lock(|a| {
@@ -482,8 +517,8 @@ mod app {
     #[task(
         binds = IO_IRQ_BANK0,
         priority = 1,
-        shared = [led, rotary_encoder1, rotary_encoder1_switch, rotary_encoder1_value, rotary_encoder2, rotary_encoder2_switch,rotary_encoder2_value, rotary_encoder3, rotary_encoder3_switch, rotary_encoder3_value],
-        local = [tog: bool = true],
+        shared = [led, encoders],
+        local = [tog: bool = true, rotary_encoder1, rotary_encoder1_switch, rotary_encoder2, rotary_encoder2_switch, rotary_encoder3, rotary_encoder3_switch],
     )]
     fn rotary_encoder_update(mut c: rotary_encoder_update::Context) {
         c.shared.led.lock(|l| l.set_low().unwrap());
@@ -492,72 +527,71 @@ mod app {
 
         // Check encoders
         // - Encoder1
-        c.shared.rotary_encoder1.lock(|encoder| {
-            c.shared.rotary_encoder1_value.lock(|value| {
-                let increment = if let Ok(direction) = encoder.update() {
-                    if direction == Direction::Clockwise {
-                        -1
-                    } else if direction == Direction::CounterClockwise {
-                        1
-                    } else {
-                        0
-                    }
-                } else {
-                    0
-                };
-                let temp_value = *value as i32 + increment;
-                *value = if temp_value < 0 {
-                    0
-                } else {
-                    temp_value as usize
-                };
-            });
-        });
-        c.shared.rotary_encoder1_switch.lock(|_switch| {});
-
+        let encoder1_increment = if let Ok(direction) = c.local.rotary_encoder1.update() {
+            if direction == Direction::Clockwise {
+                -1
+            } else if direction == Direction::CounterClockwise {
+                1
+            } else {
+                0
+            }
+        } else {
+            0
+        };
+        let encoder1_switch_value = c.local.rotary_encoder1_switch.is_low().unwrap();
         // - Encoder2
-        c.shared.rotary_encoder2.lock(|encoder| {
-            c.shared.rotary_encoder2_value.lock(|value| {
-                let increment = if let Ok(direction) = encoder.update() {
-                    if direction == Direction::Clockwise {
-                        -1
-                    } else if direction == Direction::CounterClockwise {
-                        1
-                    } else {
-                        0
-                    }
-                } else {
-                    0
-                };
-                let temp_value = *value as i32 + increment;
-                *value = if temp_value < 0 {
-                    0
-                } else {
-                    temp_value as usize
-                };
-            });
-        });
-        // - Encoder1
-        c.shared.rotary_encoder3.lock(|encoder| {
-            c.shared.rotary_encoder3_value.lock(|value| {
-                let increment = if let Ok(direction) = encoder.update() {
-                    if direction == Direction::Clockwise {
-                        -1
-                    } else if direction == Direction::CounterClockwise {
-                        1
-                    } else {
-                        0
-                    }
-                } else {
-                    0
-                };
-                let temp_value = *value as i32 + increment;
-                *value = if temp_value < 0 {
-                    0
-                } else {
-                    temp_value as usize
-                };
-            });
+        let encoder2_increment = if let Ok(direction) = c.local.rotary_encoder2.update() {
+            if direction == Direction::Clockwise {
+                -1
+            } else if direction == Direction::CounterClockwise {
+                1
+            } else {
+                0
+            }
+        } else {
+            0
+        };
+        let encoder2_switch_value = c.local.rotary_encoder2_switch.is_low().unwrap();
+        // - Encoder3
+        let encoder3_increment = if let Ok(direction) = c.local.rotary_encoder3.update() {
+            if direction == Direction::Clockwise {
+                -1
+            } else if direction == Direction::CounterClockwise {
+                1
+            } else {
+                0
+            }
+        } else {
+            0
+        };
+        let encoder3_switch_value = c.local.rotary_encoder2_switch.is_low().unwrap();
+
+        // Write values
+        c.shared.encoders.lock(|encoders| {
+            // - Encoder1
+            let encoder_1_value = encoders.encoder1.value as i32 + encoder1_increment;
+            encoders.encoder1.value = if encoder_1_value < 0 {
+                0
+            } else {
+                encoder_1_value.try_into().unwrap()
+            };
+            encoders.encoder1.button = encoder1_switch_value;
+            // - Encoder2
+            let encoder_2_value = encoders.encoder2.value as i32 + encoder2_increment;
+            encoders.encoder2.value = if encoder_2_value < 0 {
+                0
+            } else {
+                encoder_2_value.try_into().unwrap()
+            };
+            encoders.encoder2.button = encoder2_switch_value;
+            // - Encoder3
+            let encoder_3_value = encoders.encoder3.value as i32 + encoder3_increment;
+            encoders.encoder3.value = if encoder_3_value < 0 {
+                0
+            } else {
+                encoder_3_value.try_into().unwrap()
+            };
+            encoders.encoder3.button = encoder3_switch_value;
         });
     }
 }

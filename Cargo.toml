@@ -39,6 +39,7 @@ itoa = "1.0.17"
 embedded-alloc = "0.5.1"
 embedded-hal-bus = "0.3.0"
 embedded-menu = "0.6.1"
+embedded-layout = { version = "0.4.2", default-features = false }
 
 # cargo build/run
 [profile.dev]
