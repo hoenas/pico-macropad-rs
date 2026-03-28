@@ -11,6 +11,7 @@ mod app {
     use alloc::vec::Vec;
     use embedded_alloc::Heap;
     use embedded_hal::digital::{InputPin, StatefulOutputPin};
+    use embedded_layout::view_group::ViewGroup;
     use embedded_menu::items::menu_item::SelectValue;
     use embedded_menu::items::{MenuItem, MenuListItem};
 
@@ -97,7 +98,6 @@ mod app {
     const MAX_FILE_NAMES: usize = 64;
     const CHARACTER_STYLE: MonoTextStyle<BinaryColor> =
         MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
-    const ENCODER_DOWNSAMPLING_FACTOR: usize = 1;
     const LAST_CONFIG_FILE_NAME: &str = "lastcfg";
     /// A dummy timesource, which is mostly important for creating files.
     #[derive(Default)]
@@ -211,6 +211,7 @@ mod app {
             embedded_menu::selection_indicator::style::Line,
             BinaryColor,
         >,
+        file_names: Vec<String>,
         menu_mode: bool,
         ticks_since_menu_state_change: usize,
         display_update_interval: usize,
@@ -424,11 +425,13 @@ mod app {
         let mut buffer = [0_u8; 4096];
         let mut lfn_buffer = embedded_sdmmc::LfnBuffer::new(&mut buffer);
         let mut menu_items = Vec::new();
+        let mut file_names = Vec::new();
         root_dir
             .iterate_dir_lfn(&mut lfn_buffer, |_, filename| {
                 if let Some(filename) = filename {
                     if filename.ends_with(".cfg") {
                         let item = MenuItem::new(String::from(filename), "");
+                        file_names.push(String::from(filename));
                         menu_items.push(item);
                     }
                 }
@@ -446,7 +449,7 @@ mod app {
 
         let style = embedded_menu::MenuStyle::new(BinaryColor::On)
             .with_scrollbar_style(embedded_menu::DisplayScrollbar::Auto);
-        let mut menu = embedded_menu::Menu::with_style("Load Config", style)
+        let menu = embedded_menu::Menu::with_style("Load Config", style)
             .add_menu_items(menu_items)
             .build();
         // - RGB LEDs
@@ -504,6 +507,7 @@ mod app {
                 display,
                 rgb_leds,
                 menu,
+                file_names,
                 menu_mode: true,
                 ticks_since_menu_state_change: 0,
                 display_update_interval: DISPLAY_UPDATE.to_millis() as usize,
@@ -547,7 +551,6 @@ mod app {
             c.shared.encoders.lock(|encoders| {
                 menu_position = encoders.encoder1.value;
             });
-            menu_position /= ENCODER_DOWNSAMPLING_FACTOR;
             menu.interact(embedded_menu::interaction::Interaction::Navigation(
                 embedded_menu::interaction::Navigation::JumpTo(menu_position),
             ));
