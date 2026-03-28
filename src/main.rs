@@ -91,7 +91,7 @@ mod app {
 
     const DISPLAY_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(25);
     const RGB_LEDS_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(25);
-    const NUM_LEDS: usize = 7;
+    const NUM_LEDS: usize = 8;
     const MAX_FILE_NAMES: usize = 64;
     const CHARACTER_STYLE: MonoTextStyle<BinaryColor> =
         MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
@@ -575,9 +575,11 @@ mod app {
         // Write RGB values
         let mut data: [RGB8; NUM_LEDS] = [RGB8::default(); NUM_LEDS];
         for i in 0..data.len() {
-            data[i] = RGB8::new(50, 0, 50);
+            let red = 30u8 * (i as u8 + 1 as u8);
+            let blue = 255u8 - 30u8 * (i as u8 + 1 as u8);
+            data[i] = RGB8::new(red, 0, blue);
         }
-        c.local.rgb_leds.write(data.iter().cloned());
+        c.local.rgb_leds.write(data.iter().cloned()).unwrap();
 
         let mut alarm = c.shared.rgb_leds_alarm;
         (alarm).lock(|a| {
