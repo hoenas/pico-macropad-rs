@@ -19,7 +19,7 @@ rp-pico = { git = "https://github.com/hoenas/rp-hal-boards.git", branch = "dev/u
 embedded-sdmmc = "0.9.0"
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde_json = { version = "1.0.149", default-features = false, features = ["alloc"] }
-rotary-encoder-hal = { version = "0.6.0"}
+rotary-encoder-hal = { version = "0.6.0", features = ["table-decoder"]}
 sh1106 = "0.5.0"
 usb-device = "0.3"
 packed_struct = { version = "0.10", default-features = false }
@@ -40,6 +40,7 @@ embedded-alloc = "0.5.1"
 embedded-hal-bus = "0.3.0"
 embedded-menu = "0.6.1"
 embedded-layout = { version = "0.4.2", default-features = false }
+usbd-hid = "0.9.0"
 
 # cargo build/run
 [profile.dev]

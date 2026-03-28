@@ -5,6 +5,7 @@ extern crate alloc;
 use alloc::string::String;
 use alloc::vec::Vec;
 use usbd_human_interface_device::page::Keyboard;
+pub mod rotary_encoder;
 pub mod test_config;
 
 #[derive(serde::Deserialize, serde::Serialize)]

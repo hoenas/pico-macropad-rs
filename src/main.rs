@@ -11,7 +11,8 @@ mod app {
     use alloc::vec::Vec;
     use embedded_alloc::Heap;
     use embedded_hal::digital::{InputPin, StatefulOutputPin};
-    use embedded_menu::items::MenuItem;
+    use embedded_menu::items::menu_item::SelectValue;
+    use embedded_menu::items::{MenuItem, MenuListItem};
 
     use fugit::MicrosDurationU32;
     use pico_macropad_rs::*;
@@ -30,7 +31,8 @@ mod app {
     use hal::gpio::Pin;
 
     use rp2040_hal::gpio::FunctionPio0;
-    use rp2040_hal::gpio::Interrupt::{LevelHigh, LevelLow};
+    use rp2040_hal::gpio::Interrupt::{EdgeHigh, EdgeLow};
+    use rp2040_hal::Spi;
     use rp_pico::hal::clocks::init_clocks_and_plls;
     use rp_pico::hal::gpio::bank0::*;
     use rp_pico::hal::gpio::FunctionI2c;
@@ -44,7 +46,7 @@ mod app {
     use rp_pico::hal::Sio;
     use rp_pico::hal::Watchdog;
     use rp_pico::hal::I2C;
-    use rp_pico::pac::PIO0;
+    use rp_pico::pac::{PIO0, SPI0};
     // Pull in any important traits
     use rp_pico::hal::prelude::*;
 
@@ -63,7 +65,7 @@ mod app {
     // Link in the embedded_sdmmc crate.
     // The `SdMmcSpi` is used for block level access to the card.
     // And the `VolumeManager` gives access to the FAT filesystem functions.
-    use embedded_sdmmc::{SdCard, ShortFileName, TimeSource, Timestamp};
+    use embedded_sdmmc::{Directory, Mode, SdCard, ShortFileName, TimeSource, Timestamp};
 
     use embedded_hal::delay::DelayNs;
     use embedded_hal::digital::OutputPin;
@@ -95,7 +97,8 @@ mod app {
     const MAX_FILE_NAMES: usize = 64;
     const CHARACTER_STYLE: MonoTextStyle<BinaryColor> =
         MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
-    const ENCODER_DOWNSAMPLING_FACTOR: usize = 4;
+    const ENCODER_DOWNSAMPLING_FACTOR: usize = 1;
+    const LAST_CONFIG_FILE_NAME: &str = "lastcfg";
     /// A dummy timesource, which is mostly important for creating files.
     #[derive(Default)]
     struct DummyTimesource();
@@ -158,7 +161,7 @@ mod app {
         rgb_leds_alarm: hal::timer::Alarm1,
         led: Pin<Gpio25, FunctionSioOutput, PullNone>,
         encoders: Encoders,
-        config: MacroConfig,
+        config: String,
     }
 
     #[local]
@@ -315,34 +318,34 @@ mod app {
         // Rotary encoders
         // - Encoder 1
         let gpio10 = pins.gpio10.into_floating_input();
-        gpio10.set_interrupt_enabled(LevelHigh, true);
-        gpio10.set_interrupt_enabled(LevelLow, true);
+        gpio10.set_interrupt_enabled(EdgeHigh, true);
+        gpio10.set_interrupt_enabled(EdgeLow, true);
         let gpio11 = pins.gpio11.into_floating_input();
-        gpio11.set_interrupt_enabled(LevelHigh, true);
-        gpio11.set_interrupt_enabled(LevelLow, true);
+        gpio11.set_interrupt_enabled(EdgeHigh, true);
+        gpio11.set_interrupt_enabled(EdgeLow, true);
         let rotary_encoder1 = Rotary::new(gpio10, gpio11);
         let rotary_encoder1_switch = pins.gpio12.into_pull_up_input();
-        rotary_encoder1_switch.set_interrupt_enabled(LevelLow, true);
+        rotary_encoder1_switch.set_interrupt_enabled(EdgeLow, true);
         // - Encoder 2
         let gpio13 = pins.gpio13.into_floating_input();
-        gpio13.set_interrupt_enabled(LevelLow, true);
-        gpio13.set_interrupt_enabled(LevelHigh, true);
+        gpio13.set_interrupt_enabled(EdgeLow, true);
+        gpio13.set_interrupt_enabled(EdgeHigh, true);
         let gpio14 = pins.gpio14.into_floating_input();
-        gpio14.set_interrupt_enabled(LevelHigh, true);
-        gpio14.set_interrupt_enabled(LevelLow, true);
+        gpio14.set_interrupt_enabled(EdgeHigh, true);
+        gpio14.set_interrupt_enabled(EdgeLow, true);
         let rotary_encoder2 = Rotary::new(gpio13, gpio14);
         let rotary_encoder2_switch = pins.gpio15.into_pull_up_input();
-        rotary_encoder2_switch.set_interrupt_enabled(LevelLow, true);
+        rotary_encoder2_switch.set_interrupt_enabled(EdgeLow, true);
         // - Encoder 3
         let gpio20 = pins.gpio20.into_floating_input();
-        gpio20.set_interrupt_enabled(LevelLow, true);
-        gpio20.set_interrupt_enabled(LevelHigh, true);
+        gpio20.set_interrupt_enabled(EdgeLow, true);
+        gpio20.set_interrupt_enabled(EdgeHigh, true);
         let gpio21 = pins.gpio21.into_floating_input();
-        gpio21.set_interrupt_enabled(LevelHigh, true);
-        gpio21.set_interrupt_enabled(LevelLow, true);
+        gpio21.set_interrupt_enabled(EdgeHigh, true);
+        gpio21.set_interrupt_enabled(EdgeLow, true);
         let rotary_encoder3 = Rotary::new(gpio20, gpio21);
         let rotary_encoder3_switch = pins.gpio22.into_pull_up_input();
-        rotary_encoder3_switch.set_interrupt_enabled(LevelLow, true);
+        rotary_encoder3_switch.set_interrupt_enabled(EdgeLow, true);
         // Display
         let display_sda_pin: hal::gpio::Pin<_, hal::gpio::FunctionI2C, _> =
             pins.gpio26.reconfigure();
@@ -405,7 +408,7 @@ mod app {
             Ok(val) => val,
         };
         Text::with_alignment(
-            "Reading files...",
+            "Listing files...",
             display.bounding_box().top_left + Point::new(0, 20),
             CHARACTER_STYLE,
             Alignment::Left,
@@ -418,21 +421,32 @@ mod app {
             Err(_) => blink_signals_loop(&mut led, &mut timer, &BLINK_ERR_4_SHORT),
             Ok(val) => val,
         };
-        let mut buffer = [0_u8; 2048];
+        let mut buffer = [0_u8; 4096];
         let mut lfn_buffer = embedded_sdmmc::LfnBuffer::new(&mut buffer);
         let mut menu_items = Vec::new();
         root_dir
             .iterate_dir_lfn(&mut lfn_buffer, |_, filename| {
                 if let Some(filename) = filename {
                     if filename.ends_with(".cfg") {
-                        menu_items.push(MenuItem::new(String::from(filename), ""));
+                        let item = MenuItem::new(String::from(filename), "");
+                        menu_items.push(item);
                     }
                 }
             })
             .unwrap();
+        Text::with_alignment(
+            "Loading last config...",
+            display.bounding_box().top_left + Point::new(0, 30),
+            CHARACTER_STYLE,
+            Alignment::Left,
+        )
+        .draw(&mut display)
+        .unwrap();
+        display.flush().unwrap();
+
         let style = embedded_menu::MenuStyle::new(BinaryColor::On)
             .with_scrollbar_style(embedded_menu::DisplayScrollbar::Auto);
-        let menu = embedded_menu::Menu::with_style("Load Config", style)
+        let mut menu = embedded_menu::Menu::with_style("Load Config", style)
             .add_menu_items(menu_items)
             .build();
         // - RGB LEDs
@@ -445,22 +459,22 @@ mod app {
             clocks.peripheral_clock.freq(),
             timer.count_down(),
         );
-        // Test loading file
-        let short_file_name = ShortFileName::create_from_str("out.cfg").unwrap();
-        let opened_file = root_dir
-            .open_file_in_dir(
-                short_file_name,
-                embedded_sdmmc::Mode::ReadWriteCreateOrAppend,
-            )
-            .unwrap();
+        // // Test loading file
+        // let short_file_name = ShortFileName::create_from_str("out.cfg").unwrap();
+        // let opened_file = root_dir
+        //     .open_file_in_dir(
+        //         short_file_name,
+        //         embedded_sdmmc::Mode::ReadWriteCreateOrAppend,
+        //     )
+        //     .unwrap();
 
-        blink_signals(&mut led, &mut timer, &BLINK_OK_LONG);
+        // blink_signals(&mut led, &mut timer, &BLINK_OK_LONG);
 
-        blink_signals(&mut led, &mut timer, &BLINK_OK_LONG);
-        let bytes_read = opened_file.read(&mut buffer).unwrap();
-        blink_signals(&mut led, &mut timer, &BLINK_OK_LONG);
-        let config: MacroConfig = serde_json::from_slice(&buffer[..bytes_read]).unwrap();
-        blink_signals(&mut led, &mut timer, &BLINK_OK_LONG);
+        // blink_signals(&mut led, &mut timer, &BLINK_OK_LONG);
+        // let bytes_read = opened_file.read(&mut buffer).unwrap();
+        // blink_signals(&mut led, &mut timer, &BLINK_OK_LONG);
+        // let config: MacroConfig = serde_json::from_slice(&buffer[..bytes_read]).unwrap();
+        // blink_signals(&mut led, &mut timer, &BLINK_OK_LONG);
 
         // Timer for display update
         let mut display_alarm = timer.alarm_0().unwrap();
@@ -478,7 +492,7 @@ mod app {
                 rgb_leds_alarm,
                 led,
                 encoders: Encoders::default(),
-                config: config,
+                config: String::new(),
             },
             Local {
                 rotary_encoder1,
@@ -508,7 +522,7 @@ mod app {
         c.local.display.clear();
         c.shared.led.lock(|l| l.set_high().unwrap());
         // Check if we are in menu mode
-        let mut menu_mode = *c.local.menu_mode;
+        let menu_mode = *c.local.menu_mode;
         let mut menu_button_pressed = false;
         let mut menu_button_value_changed = false;
         c.shared.encoders.lock(|encoders| {
@@ -613,6 +627,8 @@ mod app {
             0
         };
         let encoder1_switch_value = c.local.rotary_encoder1_switch.is_low().unwrap();
+        // Wait until the button is left again
+        while c.local.rotary_encoder1_switch.is_low().unwrap() {}
         // - Encoder2
         let encoder2_increment = if let Ok(direction) = c.local.rotary_encoder2.update() {
             if direction == Direction::Clockwise {
@@ -626,6 +642,8 @@ mod app {
             0
         };
         let encoder2_switch_value = c.local.rotary_encoder2_switch.is_low().unwrap();
+        // Wait until the button is left again
+        while c.local.rotary_encoder2_switch.is_low().unwrap() {}
         // - Encoder3
         let encoder3_increment = if let Ok(direction) = c.local.rotary_encoder3.update() {
             if direction == Direction::Clockwise {
@@ -638,7 +656,9 @@ mod app {
         } else {
             0
         };
-        let encoder3_switch_value = c.local.rotary_encoder2_switch.is_low().unwrap();
+        let encoder3_switch_value = c.local.rotary_encoder3_switch.is_low().unwrap();
+        // Wait until the button is left again
+        while c.local.rotary_encoder3_switch.is_low().unwrap() {}
 
         // Write values
         c.shared.encoders.lock(|encoders| {
