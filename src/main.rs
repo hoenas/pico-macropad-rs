@@ -520,7 +520,7 @@ mod app {
         binds = TIMER_IRQ_0,
         priority = 3,
         shared = [timer, display_alarm, led, encoders, ],
-        local = [tog: bool = true, display, menu, menu_mode, ticks_since_menu_state_change, display_update_interval],
+        local = [tog: bool = true, display, menu, menu_mode, ticks_since_menu_state_change, display_update_interval, file_names],
     )]
     fn display_update(mut c: display_update::Context) {
         c.local.display.clear();
@@ -550,7 +550,12 @@ mod app {
             let mut menu_position = 0;
             c.shared.encoders.lock(|encoders| {
                 menu_position = encoders.encoder1.value;
+                if menu_position >= c.local.file_names.len() {
+                    menu_position = c.local.file_names.len() - 1;
+                    encoders.encoder1.value = menu_position;
+                }
             });
+
             menu.interact(embedded_menu::interaction::Interaction::Navigation(
                 embedded_menu::interaction::Navigation::JumpTo(menu_position),
             ));
