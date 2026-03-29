@@ -30,9 +30,6 @@ trait Rotate {
 impl Rotate for String {
     fn rotate(&self, amount: usize, length: usize) -> String {
         let len = self.len();
-        if len == 0 {
-            return String::new();
-        }
         if len <= length {
             return self.clone();
         }
@@ -60,7 +57,7 @@ pub fn update_display(
     rotation_counter: usize,
 ) {
     Text::with_alignment(
-        config.name.rotate(rotation_counter, 21),
+        config.name.rotate(rotation_counter, 21).as_str(),
         display.bounding_box().top_left + Point::new(0, 10),
         CHARACTER_STYLE,
         Alignment::Left,

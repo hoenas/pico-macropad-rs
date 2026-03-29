@@ -108,7 +108,7 @@ mod app {
         MicrosDurationU32::millis(KEYBOARD_UPDATE_MILIS as u32);
     const KEYBOARD_KEY_CHECK_INTERVAL: usize = 50 / KEYBOARD_UPDATE_MILIS;
     const NUM_LEDS: usize = 8;
-    const TEXT_ROTATION_DOWNSAMPLING_FACTOR: usize = 6;
+    const TEXT_ROTATION_DOWNSAMPLING_FACTOR: usize = 4;
 
     #[shared]
     struct Shared {
