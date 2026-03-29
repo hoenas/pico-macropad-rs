@@ -66,7 +66,7 @@ pub fn update_display(
     .unwrap();
     Text::with_alignment(
         format!(
-            "{:^4}{:^4}        {:^4}",
+            "{:^3}|{:^3}        {:^4}",
             config.encoder1.display_text.rotate(rotation_counter, 4),
             config.encoder2.display_text.rotate(rotation_counter, 4),
             config.menu_encoder.display_text.rotate(rotation_counter, 4)
@@ -80,7 +80,7 @@ pub fn update_display(
     .unwrap();
     Text::with_alignment(
         format!(
-            "{:^3} {:^3} {:^3} {:^3} {:^3}",
+            "{:^3}|{:^3}|{:^3}|{:^3}|{:^3}",
             config.button0.display_text.rotate(rotation_counter, 3),
             config.button1.display_text.rotate(rotation_counter, 3),
             config.button2.display_text.rotate(rotation_counter, 3),
@@ -96,7 +96,7 @@ pub fn update_display(
     .unwrap();
     Text::with_alignment(
         format!(
-            "{:^3} {:^3} {:^3} {:^3} {:^3}",
+            "{:^3}|{:^3}|{:^3}|{:^3}|{:^3}",
             config.button5.display_text.rotate(rotation_counter, 3),
             config.button6.display_text.rotate(rotation_counter, 3),
             config.button7.display_text.rotate(rotation_counter, 3),
