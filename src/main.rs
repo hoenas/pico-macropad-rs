@@ -18,6 +18,7 @@ mod app {
     use embedded_menu::items::MenuItem;
 
     use fugit::MicrosDurationU32;
+    use pico_macropad_rs::containers::{Encoders, MacroPadButtons};
     use pico_macropad_rs::dummy_time_source::DummyTimesource;
     use pico_macropad_rs::read_config::write_last_config;
     use pico_macropad_rs::*;
@@ -101,47 +102,12 @@ mod app {
     const CHARACTER_STYLE: MonoTextStyle<BinaryColor> =
         MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
 
-    pub struct Encoder {
-        pub value: usize,
-        pub value_changed: bool,
-        pub delta: i8,
-        pub button: bool,
-    }
-    pub struct Encoders {
-        pub encoder1: Encoder,
-        pub encoder2: Encoder,
-        pub encoder3: Encoder,
-    }
-    impl Default for Encoders {
-        fn default() -> Self {
-            Self {
-                encoder1: Encoder {
-                    value: 0,
-                    value_changed: false,
-                    delta: 0,
-                    button: false,
-                },
-                encoder2: Encoder {
-                    value: 0,
-                    value_changed: false,
-                    delta: 0,
-                    button: false,
-                },
-                encoder3: Encoder {
-                    value: 0,
-                    value_changed: false,
-                    delta: 0,
-                    button: false,
-                },
-            }
-        }
-    }
-
     #[shared]
     struct Shared {
         timer: hal::Timer,
         led: Pin<Gpio25, FunctionSioOutput, PullNone>,
         encoders: Encoders,
+        buttons: MacroPadButtons,
         config: MacroConfig,
     }
 
@@ -217,6 +183,16 @@ mod app {
             >,
             DummyTimesource,
         >,
+        button0: Pin<Gpio0, FunctionSio<SioInput>, PullUp>,
+        button1: Pin<Gpio1, FunctionSio<SioInput>, PullUp>,
+        button2: Pin<Gpio2, FunctionSio<SioInput>, PullUp>,
+        button3: Pin<Gpio3, FunctionSio<SioInput>, PullUp>,
+        button4: Pin<Gpio4, FunctionSio<SioInput>, PullUp>,
+        button5: Pin<Gpio5, FunctionSio<SioInput>, PullUp>,
+        button6: Pin<Gpio6, FunctionSio<SioInput>, PullUp>,
+        button7: Pin<Gpio7, FunctionSio<SioInput>, PullUp>,
+        button8: Pin<Gpio8, FunctionSio<SioInput>, PullUp>,
+        button9: Pin<Gpio9, FunctionSio<SioInput>, PullUp>,
     }
 
     fn check_state_changed(interval: usize, counter: usize) -> bool {
@@ -264,16 +240,16 @@ mod app {
         let mut led = pins.led.reconfigure();
         led.is_set_low().unwrap();
         // Buttons
-        let _button0 = pins.gpio0.into_pull_up_input();
-        let _button1 = pins.gpio1.into_pull_up_input();
-        let _button2 = pins.gpio2.into_pull_up_input();
-        let _button3 = pins.gpio3.into_pull_up_input();
-        let _button4 = pins.gpio4.into_pull_up_input();
-        let _button5 = pins.gpio5.into_pull_up_input();
-        let _button6 = pins.gpio6.into_pull_up_input();
-        let _button7 = pins.gpio7.into_pull_up_input();
-        let _button8 = pins.gpio8.into_pull_up_input();
-        let _button9 = pins.gpio9.into_pull_up_input();
+        let button0 = pins.gpio0.into_pull_up_input();
+        let button1 = pins.gpio1.into_pull_up_input();
+        let button2 = pins.gpio2.into_pull_up_input();
+        let button3 = pins.gpio3.into_pull_up_input();
+        let button4 = pins.gpio4.into_pull_up_input();
+        let button5 = pins.gpio5.into_pull_up_input();
+        let button6 = pins.gpio6.into_pull_up_input();
+        let button7 = pins.gpio7.into_pull_up_input();
+        let button8 = pins.gpio8.into_pull_up_input();
+        let button9 = pins.gpio9.into_pull_up_input();
         // Rotary encoders
         // - Encoder 1
         let gpio10 = pins.gpio10.into_floating_input();
@@ -444,6 +420,7 @@ mod app {
                 led,
                 encoders: Encoders::default(),
                 config,
+                buttons: MacroPadButtons::default(),
             },
             Local {
                 display_alarm,
@@ -462,6 +439,16 @@ mod app {
                 ticks_since_menu_state_change: 0,
                 display_update_interval: DISPLAY_UPDATE.to_millis() as usize,
                 sd_volume_mgr: volume_mgr,
+                button0,
+                button1,
+                button2,
+                button3,
+                button4,
+                button5,
+                button6,
+                button7,
+                button8,
+                button9,
             },
             init::Monotonics(),
         )
@@ -557,8 +544,8 @@ mod app {
     #[task(
         binds = IO_IRQ_BANK0,
         priority = 1,
-        shared = [led, encoders, timer],
-        local = [tog: bool = true, rotary_encoder1, rotary_encoder1_switch, rotary_encoder2, rotary_encoder2_switch, rotary_encoder3, rotary_encoder3_switch],
+        shared = [led, encoders, timer, buttons],
+        local = [tog: bool = true, rotary_encoder1, rotary_encoder1_switch, rotary_encoder2, rotary_encoder2_switch, rotary_encoder3, rotary_encoder3_switch, button0, button1, button2, button3, button4, button5, button6, button7, button8, button9],
     )]
     fn rotary_encoder_update(mut c: rotary_encoder_update::Context) {
         c.shared.led.lock(|l| l.set_low().unwrap());
@@ -609,7 +596,7 @@ mod app {
 
         // Write values
 
-        (c.shared.encoders, c.shared.timer).lock(|encoders, timer| {
+        (c.shared.encoders, c.shared.buttons, c.shared.timer).lock(|encoders, buttons, timer| {
             // - Encoder1
             let encoder_1_value = encoders.encoder1.value as i32 + encoder1_increment;
             encoders.encoder1.value = if encoder_1_value < 0 {
@@ -640,13 +627,26 @@ mod app {
             encoders.encoder3.value_changed = encoders.encoder3.button != encoder3_switch_value;
             encoders.encoder3.delta = encoder3_increment.try_into().unwrap();
             encoders.encoder3.button = encoder3_switch_value;
+            // - Buttons
+            buttons.pad0.update(c.local.button0.is_low().unwrap());
+            buttons.pad1.update(c.local.button1.is_low().unwrap());
+            buttons.pad2.update(c.local.button2.is_low().unwrap());
+            buttons.pad3.update(c.local.button3.is_low().unwrap());
+            buttons.pad4.update(c.local.button4.is_low().unwrap());
+            buttons.pad5.update(c.local.button5.is_low().unwrap());
+            buttons.pad6.update(c.local.button6.is_low().unwrap());
+            buttons.pad7.update(c.local.button7.is_low().unwrap());
+            buttons.pad8.update(c.local.button8.is_low().unwrap());
+            buttons.pad9.update(c.local.button9.is_low().unwrap());
             // Debounce push buttons
             if encoders.encoder1.value_changed
                 || encoders.encoder2.value_changed
                 || encoders.encoder3.value_changed
+                || buttons.any_button_changed()
             {
                 timer.delay_ms(25u32);
             }
+
             // Debounce rotary encoders
             if encoders.encoder1.delta != 0
                 || encoders.encoder2.delta != 0

@@ -4,6 +4,7 @@
 extern crate alloc;
 use alloc::string::String;
 use usbd_human_interface_device::page::Keyboard;
+pub mod containers;
 pub mod dummy_time_source;
 pub mod example_config;
 pub mod read_config;
