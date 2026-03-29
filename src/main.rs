@@ -108,6 +108,7 @@ mod app {
         MicrosDurationU32::millis(KEYBOARD_UPDATE_MILIS as u32);
     const KEYBOARD_KEY_CHECK_INTERVAL: usize = 50 / KEYBOARD_UPDATE_MILIS;
     const NUM_LEDS: usize = 8;
+    const TEXT_ROTATION_DOWNSAMPLING_FACTOR: usize = 6;
 
     #[shared]
     struct Shared {
@@ -502,7 +503,7 @@ mod app {
     #[task(
         binds = TIMER_IRQ_0,
         shared = [timer, encoders, config, menu_mode, led],
-        local = [display, menu, ticks_since_menu_state_change, display_update_interval, file_names,display_alarm, sd_volume_mgr, rgb_leds],
+        local = [rotation_counter: usize = 0, display, menu, ticks_since_menu_state_change, display_update_interval, file_names,display_alarm, sd_volume_mgr, rgb_leds],
     )]
     fn display_update(mut c: display_update::Context) {
         c.shared.led.lock(|l| l.set_high().unwrap());
@@ -556,8 +557,10 @@ mod app {
             menu.update(c.local.display);
             menu.draw(c.local.display);
         } else {
+            *c.local.rotation_counter += 1;
             c.shared.config.lock(|config| {
-                pico_macropad_rs::update_display::update_display(c.local.display, config);
+                let rotation = *c.local.rotation_counter / TEXT_ROTATION_DOWNSAMPLING_FACTOR;
+                pico_macropad_rs::update_display::update_display(c.local.display, config, rotation);
             });
             // Update LEDs
             // Write RGB values
