@@ -3,10 +3,11 @@
 
 extern crate alloc;
 use alloc::string::String;
-use alloc::vec::Vec;
 use usbd_human_interface_device::page::Keyboard;
+pub mod dummy_time_source;
+pub mod read_config;
 pub mod rotary_encoder;
-pub mod test_config;
+pub mod example_config;
 
 #[derive(serde::Deserialize, serde::Serialize)]
 pub struct MacroConfig {
@@ -219,7 +220,6 @@ impl KeyboardCode {
 
 #[derive(serde::Deserialize, serde::Serialize)]
 pub struct RotaryEncoderConfig {
-    pub display_text: String,
     pub left: ButtonConfig,
     pub right: ButtonConfig,
     pub push: ButtonConfig,

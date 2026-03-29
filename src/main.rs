@@ -16,6 +16,7 @@ mod app {
     use embedded_menu::items::{MenuItem, MenuListItem};
 
     use fugit::MicrosDurationU32;
+    use pico_macropad_rs::read_config::{get_last_config, write_example_config_file};
     use pico_macropad_rs::*;
     use rotary_encoder_hal::DefaultPhase;
     use rp_pico::XOSC_CRYSTAL_FREQ;
@@ -95,28 +96,8 @@ mod app {
     const DISPLAY_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(25);
     const RGB_LEDS_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(25);
     const NUM_LEDS: usize = 8;
-    const MAX_FILE_NAMES: usize = 64;
     const CHARACTER_STYLE: MonoTextStyle<BinaryColor> =
         MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
-    const LAST_CONFIG_FILE_NAME: &str = "lastcfg";
-    /// A dummy timesource, which is mostly important for creating files.
-    #[derive(Default)]
-    struct DummyTimesource();
-
-    impl TimeSource for DummyTimesource {
-        // In theory you could use the RTC of the rp2040 here, if you had
-        // any external time synchronizing device.
-        fn get_timestamp(&self) -> Timestamp {
-            Timestamp {
-                year_since_1970: 0,
-                zero_indexed_month: 0,
-                zero_indexed_day: 0,
-                hours: 0,
-                minutes: 0,
-                seconds: 0,
-            }
-        }
-    }
 
     pub struct Encoder {
         pub value: usize,
@@ -161,7 +142,7 @@ mod app {
         rgb_leds_alarm: hal::timer::Alarm1,
         led: Pin<Gpio25, FunctionSioOutput, PullNone>,
         encoders: Encoders,
-        config: String,
+        config: MacroConfig,
     }
 
     #[local]
@@ -215,50 +196,6 @@ mod app {
         menu_mode: bool,
         ticks_since_menu_state_change: usize,
         display_update_interval: usize,
-    }
-
-    // Setup some blinking codes:
-    const BLINK_OK_LONG: [u8; 1] = [8u8];
-    const BLINK_OK_SHORT_LONG: [u8; 4] = [1u8, 0u8, 6u8, 0u8];
-    const BLINK_OK_SHORT_SHORT_LONG: [u8; 6] = [1u8, 0u8, 1u8, 0u8, 6u8, 0u8];
-    const BLINK_ERR_3_SHORT: [u8; 6] = [1u8, 0u8, 1u8, 0u8, 1u8, 0u8];
-    const BLINK_ERR_4_SHORT: [u8; 8] = [1u8, 0u8, 1u8, 0u8, 1u8, 0u8, 1u8, 0u8];
-    const BLINK_ERR_5_SHORT: [u8; 10] = [1u8, 0u8, 1u8, 0u8, 1u8, 0u8, 1u8, 0u8, 1u8, 0u8];
-    const BLINK_ERR_6_SHORT: [u8; 12] =
-        [1u8, 0u8, 1u8, 0u8, 1u8, 0u8, 1u8, 0u8, 1u8, 0u8, 1u8, 0u8];
-
-    fn blink_signals(
-        pin: &mut dyn embedded_hal::digital::OutputPin<Error = core::convert::Infallible>,
-        delay: &mut dyn DelayNs,
-        sig: &[u8],
-    ) {
-        for bit in sig {
-            if *bit != 0 {
-                pin.set_high().unwrap();
-            } else {
-                pin.set_low().unwrap();
-            }
-
-            let length = if *bit > 0 { *bit } else { 1 };
-
-            for _ in 0..length {
-                delay.delay_ms(200);
-            }
-        }
-
-        pin.set_low().unwrap();
-
-        delay.delay_ms(250);
-    }
-
-    fn blink_signals_loop(
-        pin: &mut dyn embedded_hal::digital::OutputPin<Error = core::convert::Infallible>,
-        delay: &mut dyn DelayNs,
-        sig: &[u8],
-    ) -> ! {
-        loop {
-            blink_signals(pin, delay, sig);
-        }
     }
 
     fn check_state_changed(interval: usize, counter: usize) -> bool {
@@ -394,7 +331,10 @@ mod app {
 
         let mut timer = Timer::new(c.device.TIMER, &mut resets, &clocks);
         let sdcard = SdCard::new(sdmmc_spi, timer);
-        let volume_mgr = embedded_sdmmc::VolumeManager::new(sdcard, DummyTimesource::default());
+        let volume_mgr = embedded_sdmmc::VolumeManager::new(
+            sdcard,
+            dummy_time_source::DummyTimesource::default(),
+        );
         Text::with_alignment(
             "Opening SDCard...",
             display.bounding_box().top_left + Point::new(0, 10),
@@ -404,10 +344,9 @@ mod app {
         .draw(&mut display)
         .unwrap();
         display.flush().unwrap();
-        let volume0 = match volume_mgr.open_volume(embedded_sdmmc::VolumeIdx(0)) {
-            Err(_) => blink_signals_loop(&mut led, &mut timer, &BLINK_ERR_3_SHORT),
-            Ok(val) => val,
-        };
+        let volume0 = volume_mgr
+            .open_volume(embedded_sdmmc::VolumeIdx(0))
+            .unwrap();
         Text::with_alignment(
             "Listing files...",
             display.bounding_box().top_left + Point::new(0, 20),
@@ -418,10 +357,8 @@ mod app {
         .unwrap();
         display.flush().unwrap();
 
-        let root_dir = match volume0.open_root_dir() {
-            Err(_) => blink_signals_loop(&mut led, &mut timer, &BLINK_ERR_4_SHORT),
-            Ok(val) => val,
-        };
+        let root_dir = volume0.open_root_dir().unwrap();
+        write_example_config_file(&root_dir, &"aout.cfg");
         let mut buffer = [0_u8; 4096];
         let mut lfn_buffer = embedded_sdmmc::LfnBuffer::new(&mut buffer);
         let mut menu_items = Vec::new();
@@ -437,8 +374,9 @@ mod app {
                 }
             })
             .unwrap();
+        let last_config = read_config::get_last_config(&root_dir);
         Text::with_alignment(
-            "Loading last config...",
+            &alloc::format!("Loading last config:\n{}", last_config),
             display.bounding_box().top_left + Point::new(0, 30),
             CHARACTER_STYLE,
             Alignment::Left,
@@ -446,6 +384,8 @@ mod app {
         .draw(&mut display)
         .unwrap();
         display.flush().unwrap();
+
+        let config = read_config::read_config_file(&root_dir, &last_config);
 
         let style = embedded_menu::MenuStyle::new(BinaryColor::On)
             .with_scrollbar_style(embedded_menu::DisplayScrollbar::Auto);
@@ -462,22 +402,6 @@ mod app {
             clocks.peripheral_clock.freq(),
             timer.count_down(),
         );
-        // // Test loading file
-        // let short_file_name = ShortFileName::create_from_str("out.cfg").unwrap();
-        // let opened_file = root_dir
-        //     .open_file_in_dir(
-        //         short_file_name,
-        //         embedded_sdmmc::Mode::ReadWriteCreateOrAppend,
-        //     )
-        //     .unwrap();
-
-        // blink_signals(&mut led, &mut timer, &BLINK_OK_LONG);
-
-        // blink_signals(&mut led, &mut timer, &BLINK_OK_LONG);
-        // let bytes_read = opened_file.read(&mut buffer).unwrap();
-        // blink_signals(&mut led, &mut timer, &BLINK_OK_LONG);
-        // let config: MacroConfig = serde_json::from_slice(&buffer[..bytes_read]).unwrap();
-        // blink_signals(&mut led, &mut timer, &BLINK_OK_LONG);
 
         // Timer for display update
         let mut display_alarm = timer.alarm_0().unwrap();
@@ -495,7 +419,7 @@ mod app {
                 rgb_leds_alarm,
                 led,
                 encoders: Encoders::default(),
-                config: String::new(),
+                config,
             },
             Local {
                 rotary_encoder1,
