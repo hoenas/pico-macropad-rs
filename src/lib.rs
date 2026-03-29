@@ -5,9 +5,8 @@ extern crate alloc;
 use alloc::string::String;
 use usbd_human_interface_device::page::Keyboard;
 pub mod dummy_time_source;
-pub mod read_config;
-pub mod rotary_encoder;
 pub mod example_config;
+pub mod read_config;
 
 #[derive(serde::Deserialize, serde::Serialize)]
 pub struct MacroConfig {

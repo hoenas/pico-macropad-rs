@@ -11,9 +11,8 @@ mod app {
     use alloc::vec::Vec;
     use embedded_alloc::Heap;
     use embedded_hal::digital::{InputPin, StatefulOutputPin};
-    use embedded_layout::view_group::ViewGroup;
-    use embedded_menu::items::menu_item::SelectValue;
-    use embedded_menu::items::{MenuItem, MenuListItem};
+
+    use embedded_menu::items::MenuItem;
 
     use fugit::MicrosDurationU32;
     use pico_macropad_rs::*;
@@ -22,7 +21,6 @@ mod app {
     // The macro for our start-up function
 
     // info!() and error!() macros for printing information to the debug output
-    use defmt::*;
     use defmt_rtt as _;
 
     // Ensure we halt the program on panic (if we don't mention this crate it won't
@@ -33,7 +31,7 @@ mod app {
 
     use rp2040_hal::gpio::FunctionPio0;
     use rp2040_hal::gpio::Interrupt::{EdgeHigh, EdgeLow};
-    use rp2040_hal::Spi;
+
     use rp_pico::hal::clocks::init_clocks_and_plls;
     use rp_pico::hal::gpio::bank0::*;
     use rp_pico::hal::gpio::FunctionI2c;
@@ -47,7 +45,7 @@ mod app {
     use rp_pico::hal::Sio;
     use rp_pico::hal::Watchdog;
     use rp_pico::hal::I2C;
-    use rp_pico::pac::{PIO0, SPI0};
+    use rp_pico::pac::PIO0;
     // Pull in any important traits
     use rp_pico::hal::prelude::*;
 
@@ -66,7 +64,7 @@ mod app {
     // Link in the embedded_sdmmc crate.
     // The `SdMmcSpi` is used for block level access to the card.
     // And the `VolumeManager` gives access to the FAT filesystem functions.
-    use embedded_sdmmc::{Directory, Mode, SdCard, ShortFileName, TimeSource, Timestamp};
+    use embedded_sdmmc::SdCard;
 
     use embedded_hal::delay::DelayNs;
     use embedded_hal::digital::OutputPin;
@@ -87,8 +85,6 @@ mod app {
     use smart_leds::SmartLedsWrite;
     use smart_leds::RGB8;
     use ws2812_pio::Ws2812;
-    // USB Device support
-    use usb_device::class_prelude::*;
     // USB Human Interface Device (HID) Class support
     use embedded_hal_bus::spi::ExclusiveDevice;
 
@@ -109,8 +105,8 @@ mod app {
         pub encoder2: Encoder,
         pub encoder3: Encoder,
     }
-    impl Encoders {
-        pub fn default() -> Self {
+    impl Default for Encoders {
+        fn default() -> Self {
             Self {
                 encoder1: Encoder {
                     value: 0,
@@ -493,7 +489,7 @@ mod app {
         }
         c.local.display.flush().unwrap();
         c.local.display_alarm.clear_interrupt();
-        c.local.display_alarm.schedule(DISPLAY_UPDATE);
+        c.local.display_alarm.schedule(DISPLAY_UPDATE).unwrap();
     }
 
     #[task(
@@ -502,21 +498,21 @@ mod app {
         shared = [timer ],
         local = [tog: bool = true, animation_counter: usize = 0, rgb_leds, rgb_leds_alarm],
     )]
-    fn leds_update(mut c: leds_update::Context) {
+    fn leds_update(c: leds_update::Context) {
         *c.local.animation_counter += 1;
         let _counter = c.local.animation_counter;
 
         // Write RGB values
         let mut data: [RGB8; NUM_LEDS] = [RGB8::default(); NUM_LEDS];
-        for i in 0..data.len() {
-            let red = 30u8 * (i as u8 + 1 as u8);
-            let blue = 255u8 - 30u8 * (i as u8 + 1 as u8);
-            data[i] = RGB8::new(red, 0, blue);
+        for (i, led) in data.iter_mut().enumerate() {
+            let red = 30u8 * (i as u8 + 1_u8);
+            let blue = 255u8 - 30u8 * (i as u8 + 1_u8);
+            *led = RGB8::new(red, 0, blue);
         }
         c.local.rgb_leds.write(data.iter().cloned()).unwrap();
 
         c.local.rgb_leds_alarm.clear_interrupt();
-        c.local.rgb_leds_alarm.schedule(RGB_LEDS_UPDATE);
+        c.local.rgb_leds_alarm.schedule(RGB_LEDS_UPDATE).unwrap();
     }
 
     #[task(

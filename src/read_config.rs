@@ -1,8 +1,8 @@
 use alloc::string::String;
 use anyhow::Error;
-use embedded_sdmmc::{BlockDevice, Directory, Mode, ShortFileName, TimeSource};
+use embedded_sdmmc::{BlockDevice, Directory, ShortFileName, TimeSource};
 
-use crate::{ButtonConfig, KeyboardCode, MacroConfig, RotaryEncoderConfig};
+use crate::MacroConfig;
 
 const LAST_CONFIG_FILE_NAME: &str = "lastcfg";
 const FILE_READ_BUFFER_SIZE: usize = 4096;
