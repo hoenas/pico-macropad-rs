@@ -4,7 +4,7 @@ use embedded_sdmmc::{BlockDevice, Directory, Mode, ShortFileName, TimeSource};
 use crate::{ButtonConfig, KeyboardCode, MacroConfig, RotaryEncoderConfig};
 
 const LAST_CONFIG_FILE_NAME: &str = "lastcfg";
-const FILE_READ_BUFFER_SIZE: usize = 1024;
+const FILE_READ_BUFFER_SIZE: usize = 4096;
 
 pub fn get_last_config(
     root_dir: &Directory<'_, impl BlockDevice, impl TimeSource, 4, 4, 1>,
