@@ -19,6 +19,7 @@ mod app {
 
     use fugit::MicrosDurationU32;
     use pico_macropad_rs::dummy_time_source::DummyTimesource;
+    use pico_macropad_rs::read_config::write_last_config;
     use pico_macropad_rs::*;
     use rotary_encoder_hal::DefaultPhase;
     use rp_pico::XOSC_CRYSTAL_FREQ;
@@ -516,6 +517,7 @@ mod app {
                     read_config::read_config_file(&root_dir, selected_file_name.as_str())
                 {
                     c.shared.config.lock(|config| *config = new_config);
+                    write_last_config(&root_dir, &selected_file_name.as_str());
                     *c.local.menu_mode = false;
                 }
             }
