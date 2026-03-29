@@ -557,7 +557,9 @@ mod app {
             menu.update(c.local.display);
             menu.draw(c.local.display);
         } else {
-            // TODO: Do display stuff
+            c.shared.config.lock(|config| {
+                pico_macropad_rs::update_display::update_display(c.local.display, config);
+            });
             // Update LEDs
             // Write RGB values
             let mut data: [RGB8; NUM_LEDS] = [RGB8::default(); NUM_LEDS];
