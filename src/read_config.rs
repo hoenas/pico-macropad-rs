@@ -1,4 +1,5 @@
 use alloc::string::String;
+use anyhow::Error;
 use embedded_sdmmc::{BlockDevice, Directory, Mode, ShortFileName, TimeSource};
 
 use crate::{ButtonConfig, KeyboardCode, MacroConfig, RotaryEncoderConfig};
@@ -9,21 +10,24 @@ const FILE_READ_BUFFER_SIZE: usize = 4096;
 pub fn read_file(
     root_dir: &Directory<'_, impl BlockDevice, impl TimeSource, 4, 4, 1>,
     filename: &str,
-) -> (usize, [u8; FILE_READ_BUFFER_SIZE]) {
-    let short_file_name = ShortFileName::create_from_str(filename).unwrap();
+) -> anyhow::Result<(usize, [u8; FILE_READ_BUFFER_SIZE])> {
+    let short_file_name = ShortFileName::create_from_str(filename)
+        .map_err(|_| Error::msg("Failed to create short file name"))?;
     let opened_file = root_dir
         .open_file_in_dir(short_file_name, embedded_sdmmc::Mode::ReadOnly)
-        .unwrap();
+        .map_err(|_| Error::msg("Failed to open file"))?;
     let mut buffer = [0u8; FILE_READ_BUFFER_SIZE];
-    let bytes_read = opened_file.read(&mut buffer).unwrap();
-    (bytes_read, buffer)
+    let bytes_read = opened_file
+        .read(&mut buffer)
+        .map_err(|_| Error::msg("Failed to read file"))?;
+    Ok((bytes_read, buffer))
 }
 
 pub fn get_last_config(
     root_dir: &Directory<'_, impl BlockDevice, impl TimeSource, 4, 4, 1>,
-) -> String {
-    let (bytes_read, buffer) = read_file(root_dir, LAST_CONFIG_FILE_NAME);
-    String::from(core::str::from_utf8(&buffer[..bytes_read]).unwrap())
+) -> anyhow::Result<String> {
+    let (bytes_read, buffer) = read_file(root_dir, LAST_CONFIG_FILE_NAME)?;
+    Ok(String::from(core::str::from_utf8(&buffer[..bytes_read])?))
 }
 
 pub fn read_config_file(
@@ -31,7 +35,7 @@ pub fn read_config_file(
     filename: &str,
 ) -> MacroConfig {
     // Load config file
-    let (bytes_read, buffer) = read_file(root_dir, filename);
+    let (bytes_read, buffer) = read_file(root_dir, filename).unwrap();
     let config: MacroConfig = serde_json::from_slice(&buffer[..bytes_read]).unwrap();
     config
 }

@@ -372,7 +372,12 @@ mod app {
                 }
             })
             .unwrap();
-        let last_config = read_config::get_last_config(&root_dir);
+        let last_config = read_config::get_last_config(&root_dir).unwrap_or(
+            file_names
+                .first()
+                .cloned()
+                .unwrap_or(String::from("No config found")),
+        );
         Text::with_alignment(
             &alloc::format!("Loading last config:\n{}", last_config),
             display.bounding_box().top_left + Point::new(0, 30),
