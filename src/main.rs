@@ -104,9 +104,10 @@ mod app {
     use usbd_human_interface_device::page::Keyboard;
 
     const DISPLAY_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(25);
-    const KEYBOARD_UPDATE_MILIS: u32 = 1;
-    const KEYBOARD_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(KEYBOARD_UPDATE_MILIS);
-    const KEYBOARD_KEY_CHECK_INTERVAL: usize = 50 / (KEYBOARD_UPDATE_MILIS as usize);
+    const KEYBOARD_UPDATE_MILIS: usize = 1;
+    const KEYBOARD_UPDATE: MicrosDurationU32 =
+        MicrosDurationU32::millis(KEYBOARD_UPDATE_MILIS as u32);
+    const KEYBOARD_KEY_CHECK_INTERVAL: usize = 50 / KEYBOARD_UPDATE_MILIS;
     const NUM_LEDS: usize = 8;
     const CHARACTER_STYLE: MonoTextStyle<BinaryColor> =
         MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
@@ -439,7 +440,7 @@ mod app {
             .build(usb_alloc);
 
         // https://pid.codes
-        let usb_device = UsbDeviceBuilder::new(usb_alloc, UsbVidPid(0x1209, 0x0001))
+        let usb_dev = UsbDeviceBuilder::new(usb_alloc, UsbVidPid(0x1209, 0x0001))
             .strings(&[StringDescriptors::default()
                 .manufacturer("usbd-human-interface-device")
                 .product("Keyboard")
@@ -496,7 +497,7 @@ mod app {
                 button7,
                 button8,
                 button9,
-                usb_device,
+                usb_device: usb_dev,
             },
             init::Monotonics(),
         )
@@ -504,13 +505,12 @@ mod app {
 
     #[task(
         binds = TIMER_IRQ_0,
-        priority = 3,
-        shared = [timer, led, encoders, config, menu_mode],
-        local = [tog: bool = true, display, menu, ticks_since_menu_state_change, display_update_interval, file_names,display_alarm, sd_volume_mgr, rgb_leds],
+        shared = [timer, encoders, config, menu_mode, led],
+        local = [display, menu, ticks_since_menu_state_change, display_update_interval, file_names,display_alarm, sd_volume_mgr, rgb_leds],
     )]
     fn display_update(mut c: display_update::Context) {
-        c.local.display.clear();
         c.shared.led.lock(|l| l.set_high().unwrap());
+        c.local.display.clear();
         // Check if we are in menu mode
         let mut menu_mode = false;
         c.shared.menu_mode.lock(|mode| menu_mode = *mode);
@@ -578,11 +578,12 @@ mod app {
 
     #[task(
         binds = TIMER_IRQ_1,
-        priority = 1,
-        shared = [timer,keyboard, encoders, buttons, config, menu_mode],
+        priority = 2,
+        shared = [timer,keyboard, encoders, buttons, config, menu_mode, led],
         local = [keyboard_tick_alarm, ticks_since_key_check: usize = 0],
     )]
     fn keyboard_tick(mut c: keyboard_tick::Context) {
+        c.shared.led.lock(|l| l.set_low().unwrap());
         c.shared.keyboard.lock(|k| match k.tick() {
             Err(UsbHidError::WouldBlock) => {}
             Ok(_) => {}
@@ -594,70 +595,75 @@ mod app {
         let mut menu_mode = false;
         c.shared.menu_mode.lock(|mode| menu_mode = *mode);
         // Skip writing keyboard reports if we are in menu mode
-        if !menu_mode && *c.local.ticks_since_key_check > KEYBOARD_KEY_CHECK_INTERVAL {
+
+        if *c.local.ticks_since_key_check > KEYBOARD_KEY_CHECK_INTERVAL {
             *c.local.ticks_since_key_check = 0;
             let mut keys: Vec<Keyboard> = Vec::new();
-            (c.shared.buttons, c.shared.encoders, c.shared.config).lock(
-                |buttons, encoders, config| {
-                    if buttons.pad0.pressed {
-                        keys.push(config.button0.button.to_keyboard());
-                    }
-                    if buttons.pad1.pressed {
-                        keys.push(config.button1.button.to_keyboard());
-                    }
-                    if buttons.pad2.pressed {
-                        keys.push(config.button2.button.to_keyboard());
-                    }
-                    if buttons.pad3.pressed {
-                        keys.push(config.button3.button.to_keyboard());
-                    }
-                    if buttons.pad4.pressed {
-                        keys.push(config.button4.button.to_keyboard());
-                    }
-                    if buttons.pad5.pressed {
-                        keys.push(config.button5.button.to_keyboard());
-                    }
-                    if buttons.pad6.pressed {
-                        keys.push(config.button6.button.to_keyboard());
-                    }
-                    if buttons.pad7.pressed {
-                        keys.push(config.button7.button.to_keyboard());
-                    }
-                    if buttons.pad8.pressed {
-                        keys.push(config.button8.button.to_keyboard());
-                    }
-                    if buttons.pad9.pressed {
-                        keys.push(config.button9.button.to_keyboard());
-                    }
-                    // Encoder 1
-                    if encoders.encoder0.delta < 0 {
-                        keys.push(config.encoder0.left.button.to_keyboard());
-                    } else if encoders.encoder0.delta > 0 {
-                        keys.push(config.encoder0.right.button.to_keyboard());
-                    }
-                    // Encoder 1 push button is reserved for menu navigation,
-                    // so we don't check it here
-                    // Encoder 2
-                    if encoders.encoder1.delta < 0 {
-                        keys.push(config.encoder0.left.button.to_keyboard());
-                    } else if encoders.encoder1.delta > 0 {
-                        keys.push(config.encoder0.right.button.to_keyboard());
-                    }
-                    if encoders.encoder1.button {
-                        keys.push(config.encoder0.push.button.to_keyboard());
-                    }
-                    // Encoder 3
-                    if encoders.encoder2.delta < 0 {
-                        keys.push(config.encoder1.left.button.to_keyboard());
-                    } else if encoders.encoder2.delta > 0 {
-                        keys.push(config.encoder1.right.button.to_keyboard());
-                    }
-                    if encoders.encoder2.button {
-                        keys.push(config.encoder1.push.button.to_keyboard());
-                    }
-                },
-            );
-
+            if menu_mode {
+                keys.push(Keyboard::NoEventIndicated);
+            } else {
+                (c.shared.buttons, c.shared.encoders, c.shared.config).lock(
+                    |buttons, encoders, config| {
+                        if buttons.pad0.pressed {
+                            keys.push(config.button0.button.to_keyboard());
+                        }
+                        if buttons.pad1.pressed {
+                            keys.push(config.button1.button.to_keyboard());
+                        }
+                        if buttons.pad2.pressed {
+                            keys.push(config.button2.button.to_keyboard());
+                        }
+                        if buttons.pad3.pressed {
+                            keys.push(config.button3.button.to_keyboard());
+                        }
+                        if buttons.pad4.pressed {
+                            keys.push(config.button4.button.to_keyboard());
+                        }
+                        if buttons.pad5.pressed {
+                            keys.push(config.button5.button.to_keyboard());
+                        }
+                        if buttons.pad6.pressed {
+                            keys.push(config.button6.button.to_keyboard());
+                        }
+                        if buttons.pad7.pressed {
+                            keys.push(config.button7.button.to_keyboard());
+                        }
+                        if buttons.pad8.pressed {
+                            keys.push(config.button8.button.to_keyboard());
+                        }
+                        if buttons.pad9.pressed {
+                            keys.push(config.button9.button.to_keyboard());
+                        }
+                        // Encoder 0
+                        if encoders.encoder0.delta < 0 {
+                            keys.push(config.encoder0.left.button.to_keyboard());
+                        } else if encoders.encoder0.delta > 0 {
+                            keys.push(config.encoder0.right.button.to_keyboard());
+                        }
+                        // Encoder 1 push button is reserved for menu navigation,
+                        // so we don't check it here
+                        // Encoder 2
+                        if encoders.encoder1.delta < 0 {
+                            keys.push(config.encoder0.left.button.to_keyboard());
+                        } else if encoders.encoder1.delta > 0 {
+                            keys.push(config.encoder0.right.button.to_keyboard());
+                        }
+                        if encoders.encoder1.button {
+                            keys.push(config.encoder0.push.button.to_keyboard());
+                        }
+                        // Encoder 3
+                        if encoders.encoder2.delta < 0 {
+                            keys.push(config.encoder1.left.button.to_keyboard());
+                        } else if encoders.encoder2.delta > 0 {
+                            keys.push(config.encoder1.right.button.to_keyboard());
+                        }
+                        if encoders.encoder2.button {
+                            keys.push(config.encoder1.push.button.to_keyboard());
+                        }
+                    },
+                );
+            }
+            // Send keyboard report
             (c.shared.keyboard).lock(|keyboard| match keyboard.device().write_report(keys) {
                 Err(UsbHidError::WouldBlock) => {}
                 Err(UsbHidError::Duplicate) => {}
@@ -677,15 +683,11 @@ mod app {
 
     #[task(
         binds = IO_IRQ_BANK0,
-        priority = 2,
+        priority = 1,
         shared = [led, encoders, timer, buttons],
-        local = [tog: bool = true, encoder0, encoder0_switch, encoder1, encoder1_switch, encoder2, encoder2_switch, button0, button1, button2, button3, button4, button5, button6, button7, button8, button9],
+        local = [encoder0, encoder0_switch, encoder1, encoder1_switch, encoder2, encoder2_switch, button0, button1, button2, button3, button4, button5, button6, button7, button8, button9],
     )]
     fn encoder_update(mut c: encoder_update::Context) {
-        c.shared.led.lock(|l| l.set_low().unwrap());
-
-        *c.local.tog = !*c.local.tog;
-
         // Check encoders
         // - encoder0
         let encoder0_increment = if let Ok(direction) = c.local.encoder0.update() {
@@ -793,6 +795,7 @@ mod app {
 
     #[task(
         binds = USBCTRL_IRQ,
+        priority = 3,
         shared = [keyboard],
         local = [usb_device]
     )]
