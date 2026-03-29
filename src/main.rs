@@ -695,9 +695,9 @@ mod app {
         // - encoder0
         let encoder0_increment = if let Ok(direction) = c.local.encoder0.update() {
             if direction == Direction::Clockwise {
-                1
-            } else if direction == Direction::CounterClockwise {
                 -1
+            } else if direction == Direction::CounterClockwise {
+                1
             } else {
                 0
             }
@@ -709,9 +709,9 @@ mod app {
         // - encoder1
         let encoder1_increment = if let Ok(direction) = c.local.encoder1.update() {
             if direction == Direction::Clockwise {
-                1
-            } else if direction == Direction::CounterClockwise {
                 -1
+            } else if direction == Direction::CounterClockwise {
+                1
             } else {
                 0
             }
@@ -722,9 +722,9 @@ mod app {
         // - encoder2
         let encoder2_increment = if let Ok(direction) = c.local.encoder2.update() {
             if direction == Direction::Clockwise {
-                1
-            } else if direction == Direction::CounterClockwise {
                 -1
+            } else if direction == Direction::CounterClockwise {
+                1
             } else {
                 0
             }
