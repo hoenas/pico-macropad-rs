@@ -635,26 +635,29 @@ mod app {
                             keys.push(config.button9.button.to_keyboard());
                         }
                         // Encoder 0
-                        if encoders.encoder0.delta < 0 {
+                        let delta = encoders.encoder0.read_delta();
+                        if delta < 0 {
                             keys.push(config.encoder0.left.button.to_keyboard());
-                        } else if encoders.encoder0.delta > 0 {
+                        } else if delta > 0 {
                             keys.push(config.encoder0.right.button.to_keyboard());
                         }
                         // Encoder 1 push button is reserved for menu navigation,
                         // so we don't check it here
                         // Encoder 2
-                        if encoders.encoder1.delta < 0 {
+                        let delta = encoders.encoder1.read_delta();
+                        if delta < 0 {
                             keys.push(config.encoder0.left.button.to_keyboard());
-                        } else if encoders.encoder1.delta > 0 {
+                        } else if delta > 0 {
                             keys.push(config.encoder0.right.button.to_keyboard());
                         }
                         if encoders.encoder1.button {
                             keys.push(config.encoder0.push.button.to_keyboard());
                         }
                         // Encoder 3
-                        if encoders.encoder2.delta < 0 {
+                        let delta = encoders.encoder2.read_delta();
+                        if delta < 0 {
                             keys.push(config.encoder1.left.button.to_keyboard());
-                        } else if encoders.encoder2.delta > 0 {
+                        } else if delta > 0 {
                             keys.push(config.encoder1.right.button.to_keyboard());
                         }
                         if encoders.encoder2.button {
@@ -692,9 +695,9 @@ mod app {
         // - encoder0
         let encoder0_increment = if let Ok(direction) = c.local.encoder0.update() {
             if direction == Direction::Clockwise {
-                -1
-            } else if direction == Direction::CounterClockwise {
                 1
+            } else if direction == Direction::CounterClockwise {
+                -1
             } else {
                 0
             }
@@ -706,9 +709,9 @@ mod app {
         // - encoder1
         let encoder1_increment = if let Ok(direction) = c.local.encoder1.update() {
             if direction == Direction::Clockwise {
-                -1
-            } else if direction == Direction::CounterClockwise {
                 1
+            } else if direction == Direction::CounterClockwise {
+                -1
             } else {
                 0
             }
@@ -719,9 +722,9 @@ mod app {
         // - encoder2
         let encoder2_increment = if let Ok(direction) = c.local.encoder2.update() {
             if direction == Direction::Clockwise {
-                -1
-            } else if direction == Direction::CounterClockwise {
                 1
+            } else if direction == Direction::CounterClockwise {
+                -1
             } else {
                 0
             }
@@ -734,34 +737,34 @@ mod app {
 
         (c.shared.encoders, c.shared.buttons, c.shared.timer).lock(|encoders, buttons, timer| {
             // - encoder0
-            let encoder_1_value = encoders.encoder0.value as i32 + encoder0_increment;
-            encoders.encoder0.value = if encoder_1_value < 0 {
+            let encoder0_value = encoders.encoder0.value as isize + encoder0_increment;
+            encoders.encoder0.value = if encoder0_value < 0 {
                 0
             } else {
-                encoder_1_value.try_into().unwrap()
+                encoder0_value.try_into().unwrap()
             };
             encoders.encoder0.value_changed = encoders.encoder0.button != encoder0_switch_value;
-            encoders.encoder0.delta = encoder0_increment.try_into().unwrap();
+            encoders.encoder0.delta += encoder0_increment;
             encoders.encoder0.button = encoder0_switch_value;
             // - encoder1
-            let encoder_2_value = encoders.encoder1.value as i32 + encoder1_increment;
-            encoders.encoder1.value = if encoder_2_value < 0 {
+            let encoder1_value = encoders.encoder1.value as isize + encoder1_increment;
+            encoders.encoder1.value = if encoder1_value < 0 {
                 0
             } else {
-                encoder_2_value.try_into().unwrap()
+                encoder1_value.try_into().unwrap()
             };
             encoders.encoder1.value_changed = encoders.encoder1.button != encoder1_switch_value;
-            encoders.encoder1.delta = encoder1_increment.try_into().unwrap();
+            encoders.encoder1.delta += encoder1_increment;
             encoders.encoder1.button = encoder1_switch_value;
             // - encoder2
-            let encoder_3_value = encoders.encoder2.value as i32 + encoder2_increment;
-            encoders.encoder2.value = if encoder_3_value < 0 {
+            let encoder2_value = encoders.encoder2.value as isize + encoder2_increment;
+            encoders.encoder2.value = if encoder2_value < 0 {
                 0
             } else {
-                encoder_3_value.try_into().unwrap()
+                encoder2_value.try_into().unwrap()
             };
             encoders.encoder2.value_changed = encoders.encoder2.button != encoder2_switch_value;
-            encoders.encoder2.delta = encoder2_increment.try_into().unwrap();
+            encoders.encoder2.delta += encoder2_increment;
             encoders.encoder2.button = encoder2_switch_value;
             // - Buttons
             buttons.pad0.update(c.local.button0.is_low().unwrap());

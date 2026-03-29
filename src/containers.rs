@@ -1,8 +1,16 @@
 pub struct Encoder {
     pub value: usize,
     pub value_changed: bool,
-    pub delta: i8,
+    pub delta: isize,
     pub button: bool,
+}
+
+impl Encoder {
+    pub fn read_delta(&mut self) -> isize {
+        let delta = self.delta;
+        self.delta = 0;
+        return delta;
+    }
 }
 
 impl Default for Encoder {
