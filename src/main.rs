@@ -7,12 +7,10 @@ use panic_halt as _;
 mod app {
 
     extern crate alloc;
-    use core::cell::RefCell;
 
     use alloc::string::String;
     use alloc::vec::Vec;
     use embedded_alloc::Heap;
-    use embedded_graphics::primitives::Arc;
     use embedded_hal::digital::{InputPin, StatefulOutputPin};
 
     use embedded_menu::items::MenuItem;
@@ -20,7 +18,7 @@ mod app {
     use fugit::MicrosDurationU32;
     use pico_macropad_rs::containers::{Encoders, MacroPadButtons};
     use pico_macropad_rs::dummy_time_source::DummyTimesource;
-    use pico_macropad_rs::read_config::write_last_config;
+    use pico_macropad_rs::read_config::{write_example_config_file, write_last_config};
     use pico_macropad_rs::*;
     use rotary_encoder_hal::DefaultPhase;
     use rp_pico::XOSC_CRYSTAL_FREQ;
@@ -38,6 +36,7 @@ mod app {
     use rp2040_hal::gpio::Interrupt::{EdgeHigh, EdgeLow};
     use rp2040_hal::gpio::{FunctionPio0, FunctionSpi, SioOutput};
     use rp2040_hal::Spi;
+    use rp_pico::pac::watchdog::tick;
 
     use rp_pico::hal::clocks::init_clocks_and_plls;
     use rp_pico::hal::gpio::bank0::*;
@@ -83,6 +82,7 @@ mod app {
         prelude::*,
         text::{Alignment, Text},
     };
+    use frunk::HList;
     use rotary_encoder_hal::{Direction, Rotary};
     use rp2040_hal::pio::SM0;
     use rp2040_hal::spi::Enabled;
@@ -92,12 +92,21 @@ mod app {
     use sh1106::{prelude::*, Builder};
     use smart_leds::SmartLedsWrite;
     use smart_leds::RGB8;
+    use usb_device::bus::UsbBusAllocator;
+    use usb_device::device::{StringDescriptors, UsbDevice, UsbDeviceBuilder, UsbVidPid};
+    use usbd_hid::UsbError;
+    use usbd_human_interface_device::device::keyboard::NKROBootKeyboard;
+    use usbd_human_interface_device::prelude::{UsbHidClass, UsbHidClassBuilder};
+    use usbd_human_interface_device::UsbHidError;
     use ws2812_pio::Ws2812;
     // USB Human Interface Device (HID) Class support
     use embedded_hal_bus::spi::{ExclusiveDevice, NoDelay};
+    use usbd_human_interface_device::page::Keyboard;
 
     const DISPLAY_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(25);
-    const RGB_LEDS_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(25);
+    const KEYBOARD_UPDATE_MILIS: u32 = 1;
+    const KEYBOARD_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(KEYBOARD_UPDATE_MILIS);
+    const KEYBOARD_KEY_CHECK_INTERVAL: usize = 50 / (KEYBOARD_UPDATE_MILIS as usize);
     const NUM_LEDS: usize = 8;
     const CHARACTER_STYLE: MonoTextStyle<BinaryColor> =
         MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
@@ -109,30 +118,36 @@ mod app {
         encoders: Encoders,
         buttons: MacroPadButtons,
         config: MacroConfig,
+        menu_mode: bool,
+        keyboard: UsbHidClass<
+            'static,
+            hal::usb::UsbBus,
+            HList!(NKROBootKeyboard<'static, hal::usb::UsbBus>),
+        >,
     }
 
     #[local]
     struct Local {
         display_alarm: hal::timer::Alarm0,
-        rgb_leds_alarm: hal::timer::Alarm1,
-        rotary_encoder1: Rotary<
+        keyboard_tick_alarm: hal::timer::Alarm1,
+        encoder0: Rotary<
             Pin<Gpio10, FunctionSio<SioInput>, PullNone>,
             Pin<Gpio11, FunctionSio<SioInput>, PullNone>,
             DefaultPhase,
         >,
-        rotary_encoder1_switch: Pin<Gpio12, FunctionSio<SioInput>, PullUp>,
-        rotary_encoder2: Rotary<
+        encoder0_switch: Pin<Gpio12, FunctionSio<SioInput>, PullUp>,
+        encoder1: Rotary<
             Pin<Gpio13, FunctionSio<SioInput>, PullNone>,
             Pin<Gpio14, FunctionSio<SioInput>, PullNone>,
             DefaultPhase,
         >,
-        rotary_encoder2_switch: Pin<Gpio15, FunctionSio<SioInput>, PullUp>,
-        rotary_encoder3: Rotary<
+        encoder1_switch: Pin<Gpio15, FunctionSio<SioInput>, PullUp>,
+        encoder2: Rotary<
             Pin<Gpio20, FunctionSio<SioInput>, PullNone>,
             Pin<Gpio21, FunctionSio<SioInput>, PullNone>,
             DefaultPhase,
         >,
-        rotary_encoder3_switch: Pin<Gpio22, FunctionSio<SioInput>, PullUp>,
+        encoder2_switch: Pin<Gpio22, FunctionSio<SioInput>, PullUp>,
         display: GraphicsMode<
             I2cInterface<
                 I2C<
@@ -161,7 +176,6 @@ mod app {
             BinaryColor,
         >,
         file_names: Vec<String>,
-        menu_mode: bool,
         ticks_since_menu_state_change: usize,
         display_update_interval: usize,
         sd_volume_mgr: VolumeManager<
@@ -193,13 +207,14 @@ mod app {
         button7: Pin<Gpio7, FunctionSio<SioInput>, PullUp>,
         button8: Pin<Gpio8, FunctionSio<SioInput>, PullUp>,
         button9: Pin<Gpio9, FunctionSio<SioInput>, PullUp>,
+        usb_device: UsbDevice<'static, hal::usb::UsbBus>,
     }
 
     fn check_state_changed(interval: usize, counter: usize) -> bool {
         counter as f32 / interval as f32 > 0.75
     }
 
-    #[init]
+    #[init(local = [usb_alloc: Option<UsbBusAllocator<hal::usb::UsbBus>> = None])]
     fn init(c: init::Context) -> (Shared, Local, init::Monotonics) {
         #[global_allocator]
         static ALLOCATOR: Heap = Heap::empty();
@@ -216,7 +231,7 @@ mod app {
         }
         let mut resets = c.device.RESETS;
         let mut watchdog = Watchdog::new(c.device.WATCHDOG);
-        let clocks = init_clocks_and_plls(
+        let clocks: rp2040_hal::clocks::ClocksManager = init_clocks_and_plls(
             XOSC_CRYSTAL_FREQ,
             c.device.XOSC,
             c.device.CLOCKS,
@@ -258,9 +273,9 @@ mod app {
         let gpio11 = pins.gpio11.into_floating_input();
         gpio11.set_interrupt_enabled(EdgeHigh, true);
         gpio11.set_interrupt_enabled(EdgeLow, true);
-        let rotary_encoder1 = Rotary::new(gpio10, gpio11);
-        let rotary_encoder1_switch = pins.gpio12.into_pull_up_input();
-        rotary_encoder1_switch.set_interrupt_enabled(EdgeLow, true);
+        let encoder0 = Rotary::new(gpio10, gpio11);
+        let encoder0_switch = pins.gpio12.into_pull_up_input();
+        encoder0_switch.set_interrupt_enabled(EdgeLow, true);
         // - Encoder 2
         let gpio13 = pins.gpio13.into_floating_input();
         gpio13.set_interrupt_enabled(EdgeLow, true);
@@ -268,9 +283,9 @@ mod app {
         let gpio14 = pins.gpio14.into_floating_input();
         gpio14.set_interrupt_enabled(EdgeHigh, true);
         gpio14.set_interrupt_enabled(EdgeLow, true);
-        let rotary_encoder2 = Rotary::new(gpio13, gpio14);
-        let rotary_encoder2_switch = pins.gpio15.into_pull_up_input();
-        rotary_encoder2_switch.set_interrupt_enabled(EdgeLow, true);
+        let encoder1 = Rotary::new(gpio13, gpio14);
+        let encoder1_switch = pins.gpio15.into_pull_up_input();
+        encoder1_switch.set_interrupt_enabled(EdgeLow, true);
         // - Encoder 3
         let gpio20 = pins.gpio20.into_floating_input();
         gpio20.set_interrupt_enabled(EdgeLow, true);
@@ -278,9 +293,9 @@ mod app {
         let gpio21 = pins.gpio21.into_floating_input();
         gpio21.set_interrupt_enabled(EdgeHigh, true);
         gpio21.set_interrupt_enabled(EdgeLow, true);
-        let rotary_encoder3 = Rotary::new(gpio20, gpio21);
-        let rotary_encoder3_switch = pins.gpio22.into_pull_up_input();
-        rotary_encoder3_switch.set_interrupt_enabled(EdgeLow, true);
+        let encoder2 = Rotary::new(gpio20, gpio21);
+        let encoder2_switch = pins.gpio22.into_pull_up_input();
+        encoder2_switch.set_interrupt_enabled(EdgeLow, true);
         // Display
         let display_sda_pin: hal::gpio::Pin<_, hal::gpio::FunctionI2C, _> =
             pins.gpio26.reconfigure();
@@ -370,6 +385,7 @@ mod app {
                 }
             })
             .unwrap();
+        write_example_config_file(&root_dir, &"good.cfg");
         let last_config = read_config::get_last_config(&root_dir).unwrap_or(
             file_names
                 .first()
@@ -404,15 +420,45 @@ mod app {
             clocks.peripheral_clock.freq(),
             timer.count_down(),
         );
+        // - USB
+        let usb_alloc = c
+            .local
+            .usb_alloc
+            .insert(UsbBusAllocator::new(hal::usb::UsbBus::new(
+                c.device.USBCTRL_REGS,
+                c.device.USBCTRL_DPRAM,
+                clocks.usb_clock,
+                true,
+                &mut resets,
+            )));
 
+        let keyboard = UsbHidClassBuilder::new()
+            .add_device(
+                usbd_human_interface_device::device::keyboard::NKROBootKeyboardConfig::default(),
+            )
+            .build(usb_alloc);
+
+        // https://pid.codes
+        let usb_device = UsbDeviceBuilder::new(usb_alloc, UsbVidPid(0x1209, 0x0001))
+            .strings(&[StringDescriptors::default()
+                .manufacturer("usbd-human-interface-device")
+                .product("Keyboard")
+                .serial_number("TEST")])
+            .unwrap()
+            .build();
+
+        // Enable the USB interrupt
+        unsafe {
+            rp_pico::pac::NVIC::unmask(hal::pac::Interrupt::USBCTRL_IRQ);
+        };
         // Timer for display update
         let mut display_alarm = timer.alarm_0().unwrap();
         let _ = display_alarm.schedule(DISPLAY_UPDATE);
         display_alarm.enable_interrupt();
         // Timer for RGB LED update
-        let mut rgb_leds_alarm = timer.alarm_1().unwrap();
-        let _ = rgb_leds_alarm.schedule(RGB_LEDS_UPDATE);
-        rgb_leds_alarm.enable_interrupt();
+        let mut keyboard_tick_alarm = timer.alarm_1().unwrap();
+        let _ = keyboard_tick_alarm.schedule(KEYBOARD_UPDATE);
+        keyboard_tick_alarm.enable_interrupt();
 
         (
             Shared {
@@ -421,21 +467,22 @@ mod app {
                 encoders: Encoders::default(),
                 config,
                 buttons: MacroPadButtons::default(),
+                menu_mode: false,
+                keyboard,
             },
             Local {
                 display_alarm,
-                rgb_leds_alarm,
-                rotary_encoder1,
-                rotary_encoder1_switch,
-                rotary_encoder2,
-                rotary_encoder2_switch,
-                rotary_encoder3,
-                rotary_encoder3_switch,
+                keyboard_tick_alarm,
+                encoder0,
+                encoder0_switch,
+                encoder1,
+                encoder1_switch,
+                encoder2,
+                encoder2_switch,
                 display,
                 rgb_leds,
                 menu,
                 file_names,
-                menu_mode: false,
                 ticks_since_menu_state_change: 0,
                 display_update_interval: DISPLAY_UPDATE.to_millis() as usize,
                 sd_volume_mgr: volume_mgr,
@@ -449,6 +496,7 @@ mod app {
                 button7,
                 button8,
                 button9,
+                usb_device,
             },
             init::Monotonics(),
         )
@@ -457,23 +505,24 @@ mod app {
     #[task(
         binds = TIMER_IRQ_0,
         priority = 3,
-        shared = [timer, led, encoders, config],
-        local = [tog: bool = true, display, menu, menu_mode, ticks_since_menu_state_change, display_update_interval, file_names,display_alarm, sd_volume_mgr],
+        shared = [timer, led, encoders, config, menu_mode],
+        local = [tog: bool = true, display, menu, ticks_since_menu_state_change, display_update_interval, file_names,display_alarm, sd_volume_mgr, rgb_leds],
     )]
     fn display_update(mut c: display_update::Context) {
         c.local.display.clear();
         c.shared.led.lock(|l| l.set_high().unwrap());
         // Check if we are in menu mode
-        let menu_mode = *c.local.menu_mode;
+        let mut menu_mode = false;
+        c.shared.menu_mode.lock(|mode| menu_mode = *mode);
         let mut menu_button_pressed = false;
         let mut menu_button_state_changed = false;
         c.shared.encoders.lock(|encoders| {
-            menu_button_pressed = encoders.encoder1.button;
-            menu_button_state_changed = encoders.encoder1.value_changed;
+            menu_button_pressed = encoders.encoder0.button;
+            menu_button_state_changed = encoders.encoder0.value_changed;
         });
-        // Switch to menu mode if we are currently not in menu mode and encoder1 button is pressed
+        // Switch to menu mode if we are currently not in menu mode and encoder0 button is pressed
         if !menu_mode && menu_button_pressed && menu_button_state_changed {
-            *c.local.menu_mode = true;
+            c.shared.menu_mode.lock(|menu_mode| *menu_mode = true);
         }
         // Update menu
         if menu_mode {
@@ -481,10 +530,10 @@ mod app {
             // Check if the encoder has been rotated
             let mut menu_position = 0;
             c.shared.encoders.lock(|encoders| {
-                menu_position = encoders.encoder1.value;
+                menu_position = encoders.encoder0.value;
                 if menu_position >= c.local.file_names.len() {
                     menu_position = c.local.file_names.len() - 1;
-                    encoders.encoder1.value = menu_position;
+                    encoders.encoder0.value = menu_position;
                 }
             });
 
@@ -505,13 +554,22 @@ mod app {
                 {
                     c.shared.config.lock(|config| *config = new_config);
                     write_last_config(&root_dir, &selected_file_name.as_str());
-                    *c.local.menu_mode = false;
+                    c.shared.menu_mode.lock(|menu_mode| *menu_mode = false);
                 }
             }
             menu.update(c.local.display);
             menu.draw(c.local.display);
         } else {
             // TODO: Display key map related stuff
+            // Update LEDs
+            // Write RGB values
+            let mut data: [RGB8; NUM_LEDS] = [RGB8::default(); NUM_LEDS];
+            for (i, led) in data.iter_mut().enumerate() {
+                let red = 30u8 * (i as u8 + 1_u8);
+                let blue = 255u8 - 30u8 * (i as u8 + 1_u8);
+                *led = RGB8::new(red, 0, blue);
+            }
+            c.local.rgb_leds.write(data.iter().cloned()).unwrap();
         }
         c.local.display.flush().unwrap();
         c.local.display_alarm.clear_interrupt();
@@ -520,41 +578,117 @@ mod app {
 
     #[task(
         binds = TIMER_IRQ_1,
-        priority = 4,
-        shared = [timer ],
-        local = [tog: bool = true, animation_counter: usize = 0, rgb_leds, rgb_leds_alarm],
+        priority = 1,
+        shared = [timer,keyboard, encoders, buttons, config, menu_mode],
+        local = [keyboard_tick_alarm, ticks_since_key_check: usize = 0],
     )]
-    fn leds_update(c: leds_update::Context) {
-        *c.local.animation_counter += 1;
-        let _counter = c.local.animation_counter;
+    fn keyboard_tick(mut c: keyboard_tick::Context) {
+        c.shared.keyboard.lock(|k| match k.tick() {
+            Err(UsbHidError::WouldBlock) => {}
+            Ok(_) => {}
+            Err(e) => {
+                core::panic!("Failed to process keyboard tick: {:?}", e)
+            }
+        });
 
-        // Write RGB values
-        let mut data: [RGB8; NUM_LEDS] = [RGB8::default(); NUM_LEDS];
-        for (i, led) in data.iter_mut().enumerate() {
-            let red = 30u8 * (i as u8 + 1_u8);
-            let blue = 255u8 - 30u8 * (i as u8 + 1_u8);
-            *led = RGB8::new(red, 0, blue);
+        let mut menu_mode = false;
+        c.shared.menu_mode.lock(|mode| menu_mode = *mode);
+        // Skip writing keyboard reports if we are in menu mode
+        if !menu_mode && *c.local.ticks_since_key_check > KEYBOARD_KEY_CHECK_INTERVAL {
+            *c.local.ticks_since_key_check = 0;
+            let mut keys: Vec<Keyboard> = Vec::new();
+            (c.shared.buttons, c.shared.encoders, c.shared.config).lock(
+                |buttons, encoders, config| {
+                    if buttons.pad0.pressed {
+                        keys.push(config.button0.button.to_keyboard());
+                    }
+                    if buttons.pad1.pressed {
+                        keys.push(config.button1.button.to_keyboard());
+                    }
+                    if buttons.pad2.pressed {
+                        keys.push(config.button2.button.to_keyboard());
+                    }
+                    if buttons.pad3.pressed {
+                        keys.push(config.button3.button.to_keyboard());
+                    }
+                    if buttons.pad4.pressed {
+                        keys.push(config.button4.button.to_keyboard());
+                    }
+                    if buttons.pad5.pressed {
+                        keys.push(config.button5.button.to_keyboard());
+                    }
+                    if buttons.pad6.pressed {
+                        keys.push(config.button6.button.to_keyboard());
+                    }
+                    if buttons.pad7.pressed {
+                        keys.push(config.button7.button.to_keyboard());
+                    }
+                    if buttons.pad8.pressed {
+                        keys.push(config.button8.button.to_keyboard());
+                    }
+                    if buttons.pad9.pressed {
+                        keys.push(config.button9.button.to_keyboard());
+                    }
+                    // Encoder 1
+                    if encoders.encoder0.delta < 0 {
+                        keys.push(config.encoder0.left.button.to_keyboard());
+                    } else if encoders.encoder0.delta > 0 {
+                        keys.push(config.encoder0.right.button.to_keyboard());
+                    }
+                    // Encoder 1 push button is reserved for menu navigation,
+                    // so we don't check it here
+                    // Encoder 2
+                    if encoders.encoder1.delta < 0 {
+                        keys.push(config.encoder0.left.button.to_keyboard());
+                    } else if encoders.encoder1.delta > 0 {
+                        keys.push(config.encoder0.right.button.to_keyboard());
+                    }
+                    if encoders.encoder1.button {
+                        keys.push(config.encoder0.push.button.to_keyboard());
+                    }
+                    // Encoder 3
+                    if encoders.encoder2.delta < 0 {
+                        keys.push(config.encoder1.left.button.to_keyboard());
+                    } else if encoders.encoder2.delta > 0 {
+                        keys.push(config.encoder1.right.button.to_keyboard());
+                    }
+                    if encoders.encoder2.button {
+                        keys.push(config.encoder1.push.button.to_keyboard());
+                    }
+                },
+            );
+
+            (c.shared.keyboard).lock(|keyboard| match keyboard.device().write_report(keys) {
+                Err(UsbHidError::WouldBlock) => {}
+                Err(UsbHidError::Duplicate) => {}
+                Ok(_) => {}
+                Err(e) => {
+                    core::panic!("Failed to write keyboard report: {:?}", e)
+                }
+            });
         }
-        c.local.rgb_leds.write(data.iter().cloned()).unwrap();
-
-        c.local.rgb_leds_alarm.clear_interrupt();
-        c.local.rgb_leds_alarm.schedule(RGB_LEDS_UPDATE).unwrap();
+        *c.local.ticks_since_key_check += 1;
+        c.local.keyboard_tick_alarm.clear_interrupt();
+        c.local
+            .keyboard_tick_alarm
+            .schedule(KEYBOARD_UPDATE)
+            .unwrap();
     }
 
     #[task(
         binds = IO_IRQ_BANK0,
-        priority = 1,
+        priority = 2,
         shared = [led, encoders, timer, buttons],
-        local = [tog: bool = true, rotary_encoder1, rotary_encoder1_switch, rotary_encoder2, rotary_encoder2_switch, rotary_encoder3, rotary_encoder3_switch, button0, button1, button2, button3, button4, button5, button6, button7, button8, button9],
+        local = [tog: bool = true, encoder0, encoder0_switch, encoder1, encoder1_switch, encoder2, encoder2_switch, button0, button1, button2, button3, button4, button5, button6, button7, button8, button9],
     )]
-    fn rotary_encoder_update(mut c: rotary_encoder_update::Context) {
+    fn encoder_update(mut c: encoder_update::Context) {
         c.shared.led.lock(|l| l.set_low().unwrap());
 
         *c.local.tog = !*c.local.tog;
 
         // Check encoders
-        // - Encoder1
-        let encoder1_increment = if let Ok(direction) = c.local.rotary_encoder1.update() {
+        // - encoder0
+        let encoder0_increment = if let Ok(direction) = c.local.encoder0.update() {
             if direction == Direction::Clockwise {
                 -1
             } else if direction == Direction::CounterClockwise {
@@ -565,10 +699,10 @@ mod app {
         } else {
             0
         };
-        let encoder1_switch_value = c.local.rotary_encoder1_switch.is_low().unwrap();
+        let encoder0_switch_value = c.local.encoder0_switch.is_low().unwrap();
 
-        // - Encoder2
-        let encoder2_increment = if let Ok(direction) = c.local.rotary_encoder2.update() {
+        // - encoder1
+        let encoder1_increment = if let Ok(direction) = c.local.encoder1.update() {
             if direction == Direction::Clockwise {
                 -1
             } else if direction == Direction::CounterClockwise {
@@ -579,9 +713,9 @@ mod app {
         } else {
             0
         };
-        let encoder2_switch_value = c.local.rotary_encoder2_switch.is_low().unwrap();
-        // - Encoder3
-        let encoder3_increment = if let Ok(direction) = c.local.rotary_encoder3.update() {
+        let encoder1_switch_value = c.local.encoder1_switch.is_low().unwrap();
+        // - encoder2
+        let encoder2_increment = if let Ok(direction) = c.local.encoder2.update() {
             if direction == Direction::Clockwise {
                 -1
             } else if direction == Direction::CounterClockwise {
@@ -592,41 +726,41 @@ mod app {
         } else {
             0
         };
-        let encoder3_switch_value = c.local.rotary_encoder3_switch.is_low().unwrap();
+        let encoder2_switch_value = c.local.encoder2_switch.is_low().unwrap();
 
         // Write values
 
         (c.shared.encoders, c.shared.buttons, c.shared.timer).lock(|encoders, buttons, timer| {
-            // - Encoder1
-            let encoder_1_value = encoders.encoder1.value as i32 + encoder1_increment;
-            encoders.encoder1.value = if encoder_1_value < 0 {
+            // - encoder0
+            let encoder_1_value = encoders.encoder0.value as i32 + encoder0_increment;
+            encoders.encoder0.value = if encoder_1_value < 0 {
                 0
             } else {
                 encoder_1_value.try_into().unwrap()
             };
-            encoders.encoder1.value_changed = encoders.encoder1.button != encoder1_switch_value;
-            encoders.encoder1.delta = encoder1_increment.try_into().unwrap();
-            encoders.encoder1.button = encoder1_switch_value;
-            // - Encoder2
-            let encoder_2_value = encoders.encoder2.value as i32 + encoder2_increment;
-            encoders.encoder2.value = if encoder_2_value < 0 {
+            encoders.encoder0.value_changed = encoders.encoder0.button != encoder0_switch_value;
+            encoders.encoder0.delta = encoder0_increment.try_into().unwrap();
+            encoders.encoder0.button = encoder0_switch_value;
+            // - encoder1
+            let encoder_2_value = encoders.encoder1.value as i32 + encoder1_increment;
+            encoders.encoder1.value = if encoder_2_value < 0 {
                 0
             } else {
                 encoder_2_value.try_into().unwrap()
             };
-            encoders.encoder2.value_changed = encoders.encoder2.button != encoder2_switch_value;
-            encoders.encoder2.delta = encoder2_increment.try_into().unwrap();
-            encoders.encoder2.button = encoder2_switch_value;
-            // - Encoder3
-            let encoder_3_value = encoders.encoder3.value as i32 + encoder3_increment;
-            encoders.encoder3.value = if encoder_3_value < 0 {
+            encoders.encoder1.value_changed = encoders.encoder1.button != encoder1_switch_value;
+            encoders.encoder1.delta = encoder1_increment.try_into().unwrap();
+            encoders.encoder1.button = encoder1_switch_value;
+            // - encoder2
+            let encoder_3_value = encoders.encoder2.value as i32 + encoder2_increment;
+            encoders.encoder2.value = if encoder_3_value < 0 {
                 0
             } else {
                 encoder_3_value.try_into().unwrap()
             };
-            encoders.encoder3.value_changed = encoders.encoder3.button != encoder3_switch_value;
-            encoders.encoder3.delta = encoder3_increment.try_into().unwrap();
-            encoders.encoder3.button = encoder3_switch_value;
+            encoders.encoder2.value_changed = encoders.encoder2.button != encoder2_switch_value;
+            encoders.encoder2.delta = encoder2_increment.try_into().unwrap();
+            encoders.encoder2.button = encoder2_switch_value;
             // - Buttons
             buttons.pad0.update(c.local.button0.is_low().unwrap());
             buttons.pad1.update(c.local.button1.is_low().unwrap());
@@ -639,21 +773,41 @@ mod app {
             buttons.pad8.update(c.local.button8.is_low().unwrap());
             buttons.pad9.update(c.local.button9.is_low().unwrap());
             // Debounce push buttons
-            if encoders.encoder1.value_changed
+            if encoders.encoder0.value_changed
+                || encoders.encoder1.value_changed
                 || encoders.encoder2.value_changed
-                || encoders.encoder3.value_changed
                 || buttons.any_button_changed()
             {
                 timer.delay_ms(25u32);
             }
 
             // Debounce rotary encoders
-            if encoders.encoder1.delta != 0
+            if encoders.encoder0.delta != 0
+                || encoders.encoder1.delta != 0
                 || encoders.encoder2.delta != 0
-                || encoders.encoder3.delta != 0
             {
                 timer.delay_us(100u32);
             }
         });
+    }
+
+    #[task(
+        binds = USBCTRL_IRQ,
+        shared = [keyboard],
+        local = [usb_device]
+    )]
+    fn usb_irq(mut c: usb_irq::Context) {
+        c.shared.keyboard.lock(|keyboard| {
+            if c.local.usb_device.poll(&mut [keyboard]) {
+                let interface = keyboard.device();
+                match interface.read_report() {
+                    Err(UsbError::WouldBlock) => {}
+                    Err(e) => {
+                        core::panic!("Failed to read keyboard report: {:?}", e)
+                    }
+                    Ok(leds) => {}
+                }
+            }
+        })
     }
 }

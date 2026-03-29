@@ -9,7 +9,7 @@ pub mod dummy_time_source;
 pub mod example_config;
 pub mod read_config;
 
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
 pub struct MacroConfig {
     pub button0: ButtonConfig,
     pub button1: ButtonConfig,
@@ -21,19 +21,19 @@ pub struct MacroConfig {
     pub button7: ButtonConfig,
     pub button8: ButtonConfig,
     pub button9: ButtonConfig,
-    pub rotary_encoder1: RotaryEncoderConfig,
-    pub rotary_encoder2: RotaryEncoderConfig,
-    pub rotary_encover3: RotaryEncoderConfig,
+    pub encoder0: EncoderConfig,
+    pub encoder1: EncoderConfig,
+    pub encoder2: EncoderConfig,
 }
 
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
 pub struct ButtonConfig {
     pub display_text: String,
     pub button: KeyboardCode,
 }
 
 #[repr(u8)]
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(serde::Deserialize, serde::Serialize, Copy, Clone)]
 pub enum KeyboardCode {
     NoEventIndicated = 0x00,
     ErrorRollOver = 0x01,
@@ -218,8 +218,8 @@ impl KeyboardCode {
     }
 }
 
-#[derive(serde::Deserialize, serde::Serialize)]
-pub struct RotaryEncoderConfig {
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
+pub struct EncoderConfig {
     pub left: ButtonConfig,
     pub right: ButtonConfig,
     pub push: ButtonConfig,

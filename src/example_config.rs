@@ -41,7 +41,7 @@ pub fn get_example_config() -> MacroConfig {
             display_text: String::from("J"),
             button: KeyboardCode::J,
         },
-        rotary_encoder1: RotaryEncoderConfig {
+        encoder0: EncoderConfig {
             left: ButtonConfig {
                 display_text: String::from("V+"),
                 button: KeyboardCode::VolumeUp,
@@ -55,7 +55,7 @@ pub fn get_example_config() -> MacroConfig {
                 button: KeyboardCode::Mute,
             },
         },
-        rotary_encoder2: RotaryEncoderConfig {
+        encoder1: EncoderConfig {
             left: ButtonConfig {
                 display_text: String::from("V+"),
                 button: KeyboardCode::VolumeUp,
@@ -69,7 +69,7 @@ pub fn get_example_config() -> MacroConfig {
                 button: KeyboardCode::Mute,
             },
         },
-        rotary_encover3: RotaryEncoderConfig {
+        encoder2: EncoderConfig {
             left: ButtonConfig {
                 display_text: String::from("V+"),
                 button: KeyboardCode::VolumeUp,
