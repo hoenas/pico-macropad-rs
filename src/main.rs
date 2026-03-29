@@ -385,16 +385,6 @@ mod app {
 
         let config = read_config::read_config_file(&root_dir, last_config.as_str());
 
-        Text::with_alignment(
-            &alloc::format!("Loading last config:\n{}", last_config),
-            display.bounding_box().top_left + Point::new(0, 30),
-            CHARACTER_STYLE,
-            Alignment::Left,
-        )
-        .draw(&mut display)
-        .unwrap();
-        display.flush().unwrap();
-
         let style = embedded_menu::MenuStyle::new(BinaryColor::On)
             .with_scrollbar_style(embedded_menu::DisplayScrollbar::Auto);
         let menu = embedded_menu::Menu::with_style("Load Config", style)
