@@ -16,7 +16,6 @@ mod app {
     use embedded_menu::items::{MenuItem, MenuListItem};
 
     use fugit::MicrosDurationU32;
-    use pico_macropad_rs::read_config::{get_last_config, write_example_config_file};
     use pico_macropad_rs::*;
     use rotary_encoder_hal::DefaultPhase;
     use rp_pico::XOSC_CRYSTAL_FREQ;
@@ -358,7 +357,6 @@ mod app {
         display.flush().unwrap();
 
         let root_dir = volume0.open_root_dir().unwrap();
-        write_example_config_file(&root_dir, &"aout.cfg");
         let mut buffer = [0_u8; 4096];
         let mut lfn_buffer = embedded_sdmmc::LfnBuffer::new(&mut buffer);
         let mut menu_items = Vec::new();
