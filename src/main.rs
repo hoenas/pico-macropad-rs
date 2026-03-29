@@ -137,8 +137,6 @@ mod app {
     #[shared]
     struct Shared {
         timer: hal::Timer,
-        display_alarm: hal::timer::Alarm0,
-        rgb_leds_alarm: hal::timer::Alarm1,
         led: Pin<Gpio25, FunctionSioOutput, PullNone>,
         encoders: Encoders,
         config: MacroConfig,
@@ -146,6 +144,8 @@ mod app {
 
     #[local]
     struct Local {
+        display_alarm: hal::timer::Alarm0,
+        rgb_leds_alarm: hal::timer::Alarm1,
         rotary_encoder1: Rotary<
             Pin<Gpio10, FunctionSio<SioInput>, PullNone>,
             Pin<Gpio11, FunctionSio<SioInput>, PullNone>,
@@ -418,13 +418,13 @@ mod app {
         (
             Shared {
                 timer,
-                display_alarm,
-                rgb_leds_alarm,
                 led,
                 encoders: Encoders::default(),
                 config,
             },
             Local {
+                display_alarm,
+                rgb_leds_alarm,
                 rotary_encoder1,
                 rotary_encoder1_switch,
                 rotary_encoder2,
@@ -435,7 +435,7 @@ mod app {
                 rgb_leds,
                 menu,
                 file_names,
-                menu_mode: true,
+                menu_mode: false,
                 ticks_since_menu_state_change: 0,
                 display_update_interval: DISPLAY_UPDATE.to_millis() as usize,
             },
@@ -446,8 +446,8 @@ mod app {
     #[task(
         binds = TIMER_IRQ_0,
         priority = 3,
-        shared = [timer, display_alarm, led, encoders, ],
-        local = [tog: bool = true, display, menu, menu_mode, ticks_since_menu_state_change, display_update_interval, file_names],
+        shared = [timer, led, encoders, ],
+        local = [tog: bool = true, display, menu, menu_mode, ticks_since_menu_state_change, display_update_interval, file_names,display_alarm],
     )]
     fn display_update(mut c: display_update::Context) {
         c.local.display.clear();
@@ -455,20 +455,14 @@ mod app {
         // Check if we are in menu mode
         let menu_mode = *c.local.menu_mode;
         let mut menu_button_pressed = false;
-        let mut menu_button_value_changed = false;
+        let mut menu_button_state_changed = false;
         c.shared.encoders.lock(|encoders| {
             menu_button_pressed = encoders.encoder1.button;
-            menu_button_value_changed = encoders.encoder1.value_changed;
+            menu_button_state_changed = encoders.encoder1.value_changed;
         });
         // Switch to menu mode if we are currently not in menu mode and encoder1 button is pressed
-        if check_state_changed(
-            *c.local.ticks_since_menu_state_change,
-            *c.local.display_update_interval,
-        ) && !menu_mode
-            && menu_button_pressed
-        {
+        if !menu_mode && menu_button_pressed && menu_button_state_changed {
             *c.local.menu_mode = true;
-            *c.local.ticks_since_menu_state_change = 0;
         }
         // Update menu
         if menu_mode {
@@ -486,16 +480,11 @@ mod app {
             menu.interact(embedded_menu::interaction::Interaction::Navigation(
                 embedded_menu::interaction::Navigation::JumpTo(menu_position),
             ));
-            if check_state_changed(
-                *c.local.ticks_since_menu_state_change,
-                *c.local.display_update_interval,
-            ) && menu_button_pressed
-            {
+            if menu_button_pressed && menu_button_state_changed {
                 menu.interact(embedded_menu::interaction::Interaction::Action(
                     embedded_menu::interaction::Action::Select,
                 ));
                 *c.local.menu_mode = false;
-                *c.local.ticks_since_menu_state_change = 0;
             }
             menu.update(c.local.display);
             menu.draw(c.local.display);
@@ -503,19 +492,15 @@ mod app {
             // TODO: Display key map related stuff
         }
         c.local.display.flush().unwrap();
-        *c.local.ticks_since_menu_state_change += 1;
-        let mut alarm = c.shared.display_alarm;
-        (alarm).lock(|a| {
-            a.clear_interrupt();
-            let _ = a.schedule(DISPLAY_UPDATE);
-        });
+        c.local.display_alarm.clear_interrupt();
+        c.local.display_alarm.schedule(DISPLAY_UPDATE);
     }
 
     #[task(
         binds = TIMER_IRQ_1,
         priority = 4,
-        shared = [timer, rgb_leds_alarm, ],
-        local = [tog: bool = true, animation_counter: usize = 0, rgb_leds],
+        shared = [timer ],
+        local = [tog: bool = true, animation_counter: usize = 0, rgb_leds, rgb_leds_alarm],
     )]
     fn leds_update(mut c: leds_update::Context) {
         *c.local.animation_counter += 1;
@@ -530,17 +515,14 @@ mod app {
         }
         c.local.rgb_leds.write(data.iter().cloned()).unwrap();
 
-        let mut alarm = c.shared.rgb_leds_alarm;
-        (alarm).lock(|a| {
-            a.clear_interrupt();
-            let _ = a.schedule(RGB_LEDS_UPDATE);
-        });
+        c.local.rgb_leds_alarm.clear_interrupt();
+        c.local.rgb_leds_alarm.schedule(RGB_LEDS_UPDATE);
     }
 
     #[task(
         binds = IO_IRQ_BANK0,
         priority = 1,
-        shared = [led, encoders],
+        shared = [led, encoders, timer],
         local = [tog: bool = true, rotary_encoder1, rotary_encoder1_switch, rotary_encoder2, rotary_encoder2_switch, rotary_encoder3, rotary_encoder3_switch],
     )]
     fn rotary_encoder_update(mut c: rotary_encoder_update::Context) {
@@ -562,8 +544,7 @@ mod app {
             0
         };
         let encoder1_switch_value = c.local.rotary_encoder1_switch.is_low().unwrap();
-        // Wait until the button is left again
-        while c.local.rotary_encoder1_switch.is_low().unwrap() {}
+
         // - Encoder2
         let encoder2_increment = if let Ok(direction) = c.local.rotary_encoder2.update() {
             if direction == Direction::Clockwise {
@@ -577,8 +558,6 @@ mod app {
             0
         };
         let encoder2_switch_value = c.local.rotary_encoder2_switch.is_low().unwrap();
-        // Wait until the button is left again
-        while c.local.rotary_encoder2_switch.is_low().unwrap() {}
         // - Encoder3
         let encoder3_increment = if let Ok(direction) = c.local.rotary_encoder3.update() {
             if direction == Direction::Clockwise {
@@ -592,11 +571,10 @@ mod app {
             0
         };
         let encoder3_switch_value = c.local.rotary_encoder3_switch.is_low().unwrap();
-        // Wait until the button is left again
-        while c.local.rotary_encoder3_switch.is_low().unwrap() {}
 
         // Write values
-        c.shared.encoders.lock(|encoders| {
+
+        (c.shared.encoders, c.shared.timer).lock(|encoders, timer| {
             // - Encoder1
             let encoder_1_value = encoders.encoder1.value as i32 + encoder1_increment;
             encoders.encoder1.value = if encoder_1_value < 0 {
@@ -604,7 +582,7 @@ mod app {
             } else {
                 encoder_1_value.try_into().unwrap()
             };
-            encoders.encoder1.value_changed = !(encoders.encoder1.button && encoder1_switch_value);
+            encoders.encoder1.value_changed = encoders.encoder1.button != encoder1_switch_value;
             encoders.encoder1.delta = encoder1_increment.try_into().unwrap();
             encoders.encoder1.button = encoder1_switch_value;
             // - Encoder2
@@ -614,7 +592,7 @@ mod app {
             } else {
                 encoder_2_value.try_into().unwrap()
             };
-            encoders.encoder2.value_changed = !(encoders.encoder2.button && encoder2_switch_value);
+            encoders.encoder2.value_changed = encoders.encoder2.button != encoder2_switch_value;
             encoders.encoder2.delta = encoder2_increment.try_into().unwrap();
             encoders.encoder2.button = encoder2_switch_value;
             // - Encoder3
@@ -624,9 +602,23 @@ mod app {
             } else {
                 encoder_3_value.try_into().unwrap()
             };
-            encoders.encoder3.value_changed = !(encoders.encoder3.button && encoder3_switch_value);
+            encoders.encoder3.value_changed = encoders.encoder3.button != encoder3_switch_value;
             encoders.encoder3.delta = encoder3_increment.try_into().unwrap();
             encoders.encoder3.button = encoder3_switch_value;
+            // Debounce push buttons
+            if encoders.encoder1.value_changed
+                || encoders.encoder2.value_changed
+                || encoders.encoder3.value_changed
+            {
+                timer.delay_ms(25u32);
+            }
+            // Debounce rotary encoders
+            if encoders.encoder1.delta != 0
+                || encoders.encoder2.delta != 0
+                || encoders.encoder3.delta != 0
+            {
+                timer.delay_us(100u32);
+            }
         });
     }
 }
