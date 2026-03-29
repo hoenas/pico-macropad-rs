@@ -33,11 +33,12 @@ pub fn get_last_config(
 pub fn read_config_file(
     root_dir: &Directory<'_, impl BlockDevice, impl TimeSource, 4, 4, 1>,
     filename: &str,
-) -> MacroConfig {
+) -> anyhow::Result<MacroConfig> {
     // Load config file
-    let (bytes_read, buffer) = read_file(root_dir, filename).unwrap();
-    let config: MacroConfig = serde_json::from_slice(&buffer[..bytes_read]).unwrap();
-    config
+    let (bytes_read, buffer) = read_file(root_dir, filename)?;
+    let config: MacroConfig = serde_json::from_slice(&buffer[..bytes_read])
+        .map_err(|_| Error::msg("Failed to parse config"))?;
+    Ok(config)
 }
 
 pub fn write_last_config(

@@ -7,14 +7,18 @@ use panic_halt as _;
 mod app {
 
     extern crate alloc;
+    use core::cell::RefCell;
+
     use alloc::string::String;
     use alloc::vec::Vec;
     use embedded_alloc::Heap;
+    use embedded_graphics::primitives::Arc;
     use embedded_hal::digital::{InputPin, StatefulOutputPin};
 
     use embedded_menu::items::MenuItem;
 
     use fugit::MicrosDurationU32;
+    use pico_macropad_rs::dummy_time_source::DummyTimesource;
     use pico_macropad_rs::*;
     use rotary_encoder_hal::DefaultPhase;
     use rp_pico::XOSC_CRYSTAL_FREQ;
@@ -29,8 +33,9 @@ mod app {
 
     use hal::gpio::Pin;
 
-    use rp2040_hal::gpio::FunctionPio0;
     use rp2040_hal::gpio::Interrupt::{EdgeHigh, EdgeLow};
+    use rp2040_hal::gpio::{FunctionPio0, FunctionSpi, SioOutput};
+    use rp2040_hal::Spi;
 
     use rp_pico::hal::clocks::init_clocks_and_plls;
     use rp_pico::hal::gpio::bank0::*;
@@ -45,7 +50,7 @@ mod app {
     use rp_pico::hal::Sio;
     use rp_pico::hal::Watchdog;
     use rp_pico::hal::I2C;
-    use rp_pico::pac::PIO0;
+    use rp_pico::pac::{PIO0, SPI0};
     // Pull in any important traits
     use rp_pico::hal::prelude::*;
 
@@ -64,7 +69,7 @@ mod app {
     // Link in the embedded_sdmmc crate.
     // The `SdMmcSpi` is used for block level access to the card.
     // And the `VolumeManager` gives access to the FAT filesystem functions.
-    use embedded_sdmmc::SdCard;
+    use embedded_sdmmc::{SdCard, VolumeManager};
 
     use embedded_hal::delay::DelayNs;
     use embedded_hal::digital::OutputPin;
@@ -78,6 +83,7 @@ mod app {
     };
     use rotary_encoder_hal::{Direction, Rotary};
     use rp2040_hal::pio::SM0;
+    use rp2040_hal::spi::Enabled;
     use rp2040_hal::timer::CountDown;
     use rp_pico::hal::timer::Alarm;
     use rp_pico::pac::I2C1;
@@ -86,7 +92,7 @@ mod app {
     use smart_leds::RGB8;
     use ws2812_pio::Ws2812;
     // USB Human Interface Device (HID) Class support
-    use embedded_hal_bus::spi::ExclusiveDevice;
+    use embedded_hal_bus::spi::{ExclusiveDevice, NoDelay};
 
     const DISPLAY_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(25);
     const RGB_LEDS_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(25);
@@ -191,6 +197,25 @@ mod app {
         menu_mode: bool,
         ticks_since_menu_state_change: usize,
         display_update_interval: usize,
+        sd_volume_mgr: VolumeManager<
+            SdCard<
+                ExclusiveDevice<
+                    Spi<
+                        Enabled,
+                        SPI0,
+                        (
+                            Pin<Gpio19, FunctionSpi, PullNone>,
+                            Pin<Gpio16, FunctionSpi, PullUp>,
+                            Pin<Gpio18, FunctionSpi, PullNone>,
+                        ),
+                    >,
+                    Pin<Gpio17, FunctionSio<SioOutput>, PullDown>,
+                    NoDelay,
+                >,
+                Timer,
+            >,
+            DummyTimesource,
+        >,
     }
 
     fn check_state_changed(interval: usize, counter: usize) -> bool {
@@ -384,8 +409,9 @@ mod app {
         .unwrap();
         display.flush().unwrap();
 
-        let config = read_config::read_config_file(&root_dir, last_config.as_str());
-
+        let config = read_config::read_config_file(&root_dir, last_config.as_str()).unwrap();
+        drop(root_dir);
+        drop(volume0);
         let style = embedded_menu::MenuStyle::new(BinaryColor::On)
             .with_scrollbar_style(embedded_menu::DisplayScrollbar::Auto);
         let menu = embedded_menu::Menu::with_style("Load Config", style)
@@ -434,6 +460,7 @@ mod app {
                 menu_mode: false,
                 ticks_since_menu_state_change: 0,
                 display_update_interval: DISPLAY_UPDATE.to_millis() as usize,
+                sd_volume_mgr: volume_mgr,
             },
             init::Monotonics(),
         )
@@ -442,8 +469,8 @@ mod app {
     #[task(
         binds = TIMER_IRQ_0,
         priority = 3,
-        shared = [timer, led, encoders, ],
-        local = [tog: bool = true, display, menu, menu_mode, ticks_since_menu_state_change, display_update_interval, file_names,display_alarm],
+        shared = [timer, led, encoders, config],
+        local = [tog: bool = true, display, menu, menu_mode, ticks_since_menu_state_change, display_update_interval, file_names,display_alarm, sd_volume_mgr],
     )]
     fn display_update(mut c: display_update::Context) {
         c.local.display.clear();
@@ -477,10 +504,20 @@ mod app {
                 embedded_menu::interaction::Navigation::JumpTo(menu_position),
             ));
             if menu_button_pressed && menu_button_state_changed {
-                menu.interact(embedded_menu::interaction::Interaction::Action(
-                    embedded_menu::interaction::Action::Select,
-                ));
-                *c.local.menu_mode = false;
+                // Load config
+                let volume = c
+                    .local
+                    .sd_volume_mgr
+                    .open_volume(embedded_sdmmc::VolumeIdx(0))
+                    .unwrap();
+                let root_dir = volume.open_root_dir().unwrap();
+                let selected_file_name = c.local.file_names[menu_position].clone();
+                if let Ok(new_config) =
+                    read_config::read_config_file(&root_dir, selected_file_name.as_str())
+                {
+                    c.shared.config.lock(|config| *config = new_config);
+                    *c.local.menu_mode = false;
+                }
             }
             menu.update(c.local.display);
             menu.draw(c.local.display);
