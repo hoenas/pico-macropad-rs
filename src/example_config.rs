@@ -3,85 +3,60 @@ pub fn get_example_config() -> MacroConfig {
     MacroConfig {
         button0: ButtonConfig {
             display_text: String::from("A"),
-            button: KeyboardCode::A,
+            key: KeyboardCode::A,
         },
         button1: ButtonConfig {
             display_text: String::from("B"),
-            button: KeyboardCode::B,
+            key: KeyboardCode::B,
         },
         button2: ButtonConfig {
             display_text: String::from("C"),
-            button: KeyboardCode::C,
+            key: KeyboardCode::C,
         },
         button3: ButtonConfig {
             display_text: String::from("D"),
-            button: KeyboardCode::D,
+            key: KeyboardCode::D,
         },
         button4: ButtonConfig {
             display_text: String::from("E"),
-            button: KeyboardCode::E,
+            key: KeyboardCode::E,
         },
         button5: ButtonConfig {
             display_text: String::from("F"),
-            button: KeyboardCode::F,
+            key: KeyboardCode::F,
         },
         button6: ButtonConfig {
             display_text: String::from("G"),
-            button: KeyboardCode::G,
+            key: KeyboardCode::G,
         },
         button7: ButtonConfig {
             display_text: String::from("H"),
-            button: KeyboardCode::H,
+            key: KeyboardCode::H,
         },
         button8: ButtonConfig {
             display_text: String::from("I"),
-            button: KeyboardCode::I,
+            key: KeyboardCode::I,
         },
         button9: ButtonConfig {
             display_text: String::from("J"),
-            button: KeyboardCode::J,
+            key: KeyboardCode::J,
         },
-        encoder0: EncoderConfig {
-            left: ButtonConfig {
-                display_text: String::from("V+"),
-                button: KeyboardCode::VolumeUp,
-            },
-            right: ButtonConfig {
-                display_text: String::from("V-"),
-                button: KeyboardCode::VolumeDown,
-            },
-            push: ButtonConfig {
-                display_text: String::from("Mute"),
-                button: KeyboardCode::Mute,
-            },
+        menu_encoder: MenuEncoderConfig {
+            display_text: String::from("Vol"),
+            left: KeyboardCode::VolumeDown,
+            right: KeyboardCode::VolumeUp,
         },
         encoder1: EncoderConfig {
-            left: ButtonConfig {
-                display_text: String::from("V+"),
-                button: KeyboardCode::VolumeUp,
-            },
-            right: ButtonConfig {
-                display_text: String::from("V-"),
-                button: KeyboardCode::VolumeDown,
-            },
-            push: ButtonConfig {
-                display_text: String::from("Mute"),
-                button: KeyboardCode::Mute,
-            },
+            display_text: String::from("Vol"),
+            left: KeyboardCode::VolumeDown,
+            right: KeyboardCode::VolumeUp,
+            push: KeyboardCode::Mute,
         },
         encoder2: EncoderConfig {
-            left: ButtonConfig {
-                display_text: String::from("V+"),
-                button: KeyboardCode::VolumeUp,
-            },
-            right: ButtonConfig {
-                display_text: String::from("V-"),
-                button: KeyboardCode::VolumeDown,
-            },
-            push: ButtonConfig {
-                display_text: String::from("Mute"),
-                button: KeyboardCode::Mute,
-            },
+            display_text: String::from("Vol"),
+            left: KeyboardCode::VolumeDown,
+            right: KeyboardCode::VolumeUp,
+            push: KeyboardCode::Mute,
         },
     }
 }

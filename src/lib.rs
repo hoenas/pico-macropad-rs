@@ -8,6 +8,7 @@ pub mod containers;
 pub mod dummy_time_source;
 pub mod example_config;
 pub mod read_config;
+pub mod update_display;
 
 #[derive(serde::Deserialize, serde::Serialize, Clone)]
 pub struct MacroConfig {
@@ -21,7 +22,7 @@ pub struct MacroConfig {
     pub button7: ButtonConfig,
     pub button8: ButtonConfig,
     pub button9: ButtonConfig,
-    pub encoder0: EncoderConfig,
+    pub menu_encoder: MenuEncoderConfig,
     pub encoder1: EncoderConfig,
     pub encoder2: EncoderConfig,
 }
@@ -29,7 +30,7 @@ pub struct MacroConfig {
 #[derive(serde::Deserialize, serde::Serialize, Clone)]
 pub struct ButtonConfig {
     pub display_text: String,
-    pub button: KeyboardCode,
+    pub key: KeyboardCode,
 }
 
 #[repr(u8)]
@@ -220,7 +221,15 @@ impl KeyboardCode {
 
 #[derive(serde::Deserialize, serde::Serialize, Clone)]
 pub struct EncoderConfig {
-    pub left: ButtonConfig,
-    pub right: ButtonConfig,
-    pub push: ButtonConfig,
+    pub display_text: String,
+    pub left: KeyboardCode,
+    pub right: KeyboardCode,
+    pub push: KeyboardCode,
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
+pub struct MenuEncoderConfig {
+    pub display_text: String,
+    pub left: KeyboardCode,
+    pub right: KeyboardCode,
 }

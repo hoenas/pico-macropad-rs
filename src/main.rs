@@ -19,6 +19,7 @@ mod app {
     use pico_macropad_rs::containers::{Encoders, MacroPadButtons};
     use pico_macropad_rs::dummy_time_source::DummyTimesource;
     use pico_macropad_rs::read_config::{write_example_config_file, write_last_config};
+    use pico_macropad_rs::update_display::CHARACTER_STYLE;
     use pico_macropad_rs::*;
     use rotary_encoder_hal::DefaultPhase;
     use rp_pico::XOSC_CRYSTAL_FREQ;
@@ -36,7 +37,6 @@ mod app {
     use rp2040_hal::gpio::Interrupt::{EdgeHigh, EdgeLow};
     use rp2040_hal::gpio::{FunctionPio0, FunctionSpi, SioOutput};
     use rp2040_hal::Spi;
-    use rp_pico::pac::watchdog::tick;
 
     use rp_pico::hal::clocks::init_clocks_and_plls;
     use rp_pico::hal::gpio::bank0::*;
@@ -77,7 +77,6 @@ mod app {
     use rp_pico::hal::Timer;
 
     use embedded_graphics::{
-        mono_font::{ascii::FONT_6X10, MonoTextStyle},
         pixelcolor::BinaryColor,
         prelude::*,
         text::{Alignment, Text},
@@ -109,8 +108,6 @@ mod app {
         MicrosDurationU32::millis(KEYBOARD_UPDATE_MILIS as u32);
     const KEYBOARD_KEY_CHECK_INTERVAL: usize = 50 / KEYBOARD_UPDATE_MILIS;
     const NUM_LEDS: usize = 8;
-    const CHARACTER_STYLE: MonoTextStyle<BinaryColor> =
-        MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
 
     #[shared]
     struct Shared {
@@ -131,12 +128,12 @@ mod app {
     struct Local {
         display_alarm: hal::timer::Alarm0,
         keyboard_tick_alarm: hal::timer::Alarm1,
-        encoder0: Rotary<
+        menu_encoder: Rotary<
             Pin<Gpio10, FunctionSio<SioInput>, PullNone>,
             Pin<Gpio11, FunctionSio<SioInput>, PullNone>,
             DefaultPhase,
         >,
-        encoder0_switch: Pin<Gpio12, FunctionSio<SioInput>, PullUp>,
+        menu_encoder_switch: Pin<Gpio12, FunctionSio<SioInput>, PullUp>,
         encoder1: Rotary<
             Pin<Gpio13, FunctionSio<SioInput>, PullNone>,
             Pin<Gpio14, FunctionSio<SioInput>, PullNone>,
@@ -267,17 +264,17 @@ mod app {
         let button8 = pins.gpio8.into_pull_up_input();
         let button9 = pins.gpio9.into_pull_up_input();
         // Rotary encoders
-        // - Encoder 1
+        // - Menu encoder
         let gpio10 = pins.gpio10.into_floating_input();
         gpio10.set_interrupt_enabled(EdgeHigh, true);
         gpio10.set_interrupt_enabled(EdgeLow, true);
         let gpio11 = pins.gpio11.into_floating_input();
         gpio11.set_interrupt_enabled(EdgeHigh, true);
         gpio11.set_interrupt_enabled(EdgeLow, true);
-        let encoder0 = Rotary::new(gpio10, gpio11);
-        let encoder0_switch = pins.gpio12.into_pull_up_input();
-        encoder0_switch.set_interrupt_enabled(EdgeLow, true);
-        // - Encoder 2
+        let menu_encoder = Rotary::new(gpio10, gpio11);
+        let menu_encoder_switch = pins.gpio12.into_pull_up_input();
+        menu_encoder_switch.set_interrupt_enabled(EdgeLow, true);
+        // - Encoder 1
         let gpio13 = pins.gpio13.into_floating_input();
         gpio13.set_interrupt_enabled(EdgeLow, true);
         gpio13.set_interrupt_enabled(EdgeHigh, true);
@@ -287,7 +284,7 @@ mod app {
         let encoder1 = Rotary::new(gpio13, gpio14);
         let encoder1_switch = pins.gpio15.into_pull_up_input();
         encoder1_switch.set_interrupt_enabled(EdgeLow, true);
-        // - Encoder 3
+        // - Encoder 2
         let gpio20 = pins.gpio20.into_floating_input();
         gpio20.set_interrupt_enabled(EdgeLow, true);
         gpio20.set_interrupt_enabled(EdgeHigh, true);
@@ -474,8 +471,8 @@ mod app {
             Local {
                 display_alarm,
                 keyboard_tick_alarm,
-                encoder0,
-                encoder0_switch,
+                menu_encoder,
+                menu_encoder_switch,
                 encoder1,
                 encoder1_switch,
                 encoder2,
@@ -517,8 +514,8 @@ mod app {
         let mut menu_button_pressed = false;
         let mut menu_button_state_changed = false;
         c.shared.encoders.lock(|encoders| {
-            menu_button_pressed = encoders.encoder0.button;
-            menu_button_state_changed = encoders.encoder0.value_changed;
+            menu_button_pressed = encoders.menu_encoder.button;
+            menu_button_state_changed = encoders.menu_encoder.value_changed;
         });
         // Switch to menu mode if we are currently not in menu mode and encoder0 button is pressed
         if !menu_mode && menu_button_pressed && menu_button_state_changed {
@@ -530,10 +527,10 @@ mod app {
             // Check if the encoder has been rotated
             let mut menu_position = 0;
             c.shared.encoders.lock(|encoders| {
-                menu_position = encoders.encoder0.value;
+                menu_position = encoders.menu_encoder.value;
                 if menu_position >= c.local.file_names.len() {
                     menu_position = c.local.file_names.len() - 1;
-                    encoders.encoder0.value = menu_position;
+                    encoders.menu_encoder.value = menu_position;
                 }
             });
 
@@ -560,7 +557,7 @@ mod app {
             menu.update(c.local.display);
             menu.draw(c.local.display);
         } else {
-            // TODO: Display key map related stuff
+            // TODO: Do display stuff
             // Update LEDs
             // Write RGB values
             let mut data: [RGB8; NUM_LEDS] = [RGB8::default(); NUM_LEDS];
@@ -605,63 +602,63 @@ mod app {
                 (c.shared.buttons, c.shared.encoders, c.shared.config).lock(
                     |buttons, encoders, config| {
                         if buttons.pad0.pressed {
-                            keys.push(config.button0.button.to_keyboard());
+                            keys.push(config.button0.key.to_keyboard());
                         }
                         if buttons.pad1.pressed {
-                            keys.push(config.button1.button.to_keyboard());
+                            keys.push(config.button1.key.to_keyboard());
                         }
                         if buttons.pad2.pressed {
-                            keys.push(config.button2.button.to_keyboard());
+                            keys.push(config.button2.key.to_keyboard());
                         }
                         if buttons.pad3.pressed {
-                            keys.push(config.button3.button.to_keyboard());
+                            keys.push(config.button3.key.to_keyboard());
                         }
                         if buttons.pad4.pressed {
-                            keys.push(config.button4.button.to_keyboard());
+                            keys.push(config.button4.key.to_keyboard());
                         }
                         if buttons.pad5.pressed {
-                            keys.push(config.button5.button.to_keyboard());
+                            keys.push(config.button5.key.to_keyboard());
                         }
                         if buttons.pad6.pressed {
-                            keys.push(config.button6.button.to_keyboard());
+                            keys.push(config.button6.key.to_keyboard());
                         }
                         if buttons.pad7.pressed {
-                            keys.push(config.button7.button.to_keyboard());
+                            keys.push(config.button7.key.to_keyboard());
                         }
                         if buttons.pad8.pressed {
-                            keys.push(config.button8.button.to_keyboard());
+                            keys.push(config.button8.key.to_keyboard());
                         }
                         if buttons.pad9.pressed {
-                            keys.push(config.button9.button.to_keyboard());
+                            keys.push(config.button9.key.to_keyboard());
                         }
                         // Encoder 0
-                        let delta = encoders.encoder0.read_delta();
+                        let delta = encoders.menu_encoder.read_delta();
                         if delta < 0 {
-                            keys.push(config.encoder0.left.button.to_keyboard());
+                            keys.push(config.menu_encoder.left.to_keyboard());
                         } else if delta > 0 {
-                            keys.push(config.encoder0.right.button.to_keyboard());
+                            keys.push(config.menu_encoder.right.to_keyboard());
                         }
                         // Encoder 1 push button is reserved for menu navigation,
                         // so we don't check it here
                         // Encoder 2
                         let delta = encoders.encoder1.read_delta();
                         if delta < 0 {
-                            keys.push(config.encoder0.left.button.to_keyboard());
+                            keys.push(config.encoder1.left.to_keyboard());
                         } else if delta > 0 {
-                            keys.push(config.encoder0.right.button.to_keyboard());
+                            keys.push(config.encoder1.right.to_keyboard());
                         }
                         if encoders.encoder1.button {
-                            keys.push(config.encoder0.push.button.to_keyboard());
+                            keys.push(config.encoder1.push.to_keyboard());
                         }
                         // Encoder 3
                         let delta = encoders.encoder2.read_delta();
                         if delta < 0 {
-                            keys.push(config.encoder1.left.button.to_keyboard());
+                            keys.push(config.encoder2.left.to_keyboard());
                         } else if delta > 0 {
-                            keys.push(config.encoder1.right.button.to_keyboard());
+                            keys.push(config.encoder2.right.to_keyboard());
                         }
                         if encoders.encoder2.button {
-                            keys.push(config.encoder1.push.button.to_keyboard());
+                            keys.push(config.encoder2.push.to_keyboard());
                         }
                     },
                 );
@@ -688,12 +685,12 @@ mod app {
         binds = IO_IRQ_BANK0,
         priority = 1,
         shared = [led, encoders, timer, buttons],
-        local = [encoder0, encoder0_switch, encoder1, encoder1_switch, encoder2, encoder2_switch, button0, button1, button2, button3, button4, button5, button6, button7, button8, button9],
+        local = [menu_encoder, menu_encoder_switch, encoder1, encoder1_switch, encoder2, encoder2_switch, button0, button1, button2, button3, button4, button5, button6, button7, button8, button9],
     )]
     fn encoder_update(mut c: encoder_update::Context) {
         // Check encoders
-        // - encoder0
-        let encoder0_increment = if let Ok(direction) = c.local.encoder0.update() {
+        // - menu_encoder
+        let menu_encoder_increment = if let Ok(direction) = c.local.menu_encoder.update() {
             if direction == Direction::Clockwise {
                 -1
             } else if direction == Direction::CounterClockwise {
@@ -704,7 +701,7 @@ mod app {
         } else {
             0
         };
-        let encoder0_switch_value = c.local.encoder0_switch.is_low().unwrap();
+        let menu_encoder_switch_value = c.local.menu_encoder_switch.is_low().unwrap();
 
         // - encoder1
         let encoder1_increment = if let Ok(direction) = c.local.encoder1.update() {
@@ -736,16 +733,17 @@ mod app {
         // Write values
 
         (c.shared.encoders, c.shared.buttons, c.shared.timer).lock(|encoders, buttons, timer| {
-            // - encoder0
-            let encoder0_value = encoders.encoder0.value as isize + encoder0_increment;
-            encoders.encoder0.value = if encoder0_value < 0 {
+            // - menu_encoder
+            let menu_encoder_value = encoders.menu_encoder.value as isize + menu_encoder_increment;
+            encoders.menu_encoder.value = if menu_encoder_value < 0 {
                 0
             } else {
-                encoder0_value.try_into().unwrap()
+                menu_encoder_value.try_into().unwrap()
             };
-            encoders.encoder0.value_changed = encoders.encoder0.button != encoder0_switch_value;
-            encoders.encoder0.delta += encoder0_increment;
-            encoders.encoder0.button = encoder0_switch_value;
+            encoders.menu_encoder.value_changed =
+                encoders.menu_encoder.button != menu_encoder_switch_value;
+            encoders.menu_encoder.delta += menu_encoder_increment;
+            encoders.menu_encoder.button = menu_encoder_switch_value;
             // - encoder1
             let encoder1_value = encoders.encoder1.value as isize + encoder1_increment;
             encoders.encoder1.value = if encoder1_value < 0 {
@@ -778,7 +776,7 @@ mod app {
             buttons.pad8.update(c.local.button8.is_low().unwrap());
             buttons.pad9.update(c.local.button9.is_low().unwrap());
             // Debounce push buttons
-            if encoders.encoder0.value_changed
+            if encoders.menu_encoder.value_changed
                 || encoders.encoder1.value_changed
                 || encoders.encoder2.value_changed
                 || buttons.any_button_changed()
@@ -787,7 +785,7 @@ mod app {
             }
 
             // Debounce rotary encoders
-            if encoders.encoder0.delta != 0
+            if encoders.menu_encoder.delta != 0
                 || encoders.encoder1.delta != 0
                 || encoders.encoder2.delta != 0
             {

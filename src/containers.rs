@@ -26,7 +26,7 @@ impl Default for Encoder {
 
 #[derive(Default)]
 pub struct Encoders {
-    pub encoder0: Encoder,
+    pub menu_encoder: Encoder,
     pub encoder1: Encoder,
     pub encoder2: Encoder,
 }
