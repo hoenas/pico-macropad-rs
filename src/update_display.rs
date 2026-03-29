@@ -35,11 +35,7 @@ pub fn update_display(
     config: &MacroConfig,
 ) {
     Text::with_alignment(
-        format!(
-            "[{}][{}]",
-            config.encoder1.display_text, config.encoder2.display_text
-        )
-        .as_str(),
+        config.name.as_str(),
         display.bounding_box().top_left + Point::new(0, 10),
         CHARACTER_STYLE,
         Alignment::Left,
@@ -47,8 +43,20 @@ pub fn update_display(
     .draw(display)
     .unwrap();
     Text::with_alignment(
+        format!(
+            "[{}][{}]",
+            config.encoder1.display_text, config.encoder2.display_text
+        )
+        .as_str(),
+        display.bounding_box().top_left + Point::new(0, 30),
+        CHARACTER_STYLE,
+        Alignment::Left,
+    )
+    .draw(display)
+    .unwrap();
+    Text::with_alignment(
         format!("[{}]", config.menu_encoder.display_text).as_str(),
-        display.bounding_box().top_left + Point::new(90, 10),
+        display.bounding_box().top_left + Point::new(90, 30),
         CHARACTER_STYLE,
         Alignment::Left,
     )
@@ -64,7 +72,7 @@ pub fn update_display(
             config.button4.display_text
         )
         .as_str(),
-        display.bounding_box().top_left + Point::new(0, 40),
+        display.bounding_box().top_left + Point::new(0, 50),
         CHARACTER_STYLE,
         Alignment::Left,
     )

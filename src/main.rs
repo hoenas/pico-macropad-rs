@@ -18,7 +18,7 @@ mod app {
     use fugit::MicrosDurationU32;
     use pico_macropad_rs::containers::{Encoders, MacroPadButtons};
     use pico_macropad_rs::dummy_time_source::DummyTimesource;
-    use pico_macropad_rs::read_config::{write_example_config_file, write_last_config};
+    use pico_macropad_rs::read_config::write_last_config;
     use pico_macropad_rs::update_display::CHARACTER_STYLE;
     use pico_macropad_rs::*;
     use rotary_encoder_hal::DefaultPhase;
@@ -383,7 +383,6 @@ mod app {
                 }
             })
             .unwrap();
-        write_example_config_file(&root_dir, &"good.cfg");
         let last_config = read_config::get_last_config(&root_dir).unwrap_or(
             file_names
                 .first()

@@ -12,6 +12,7 @@ pub mod update_display;
 
 #[derive(serde::Deserialize, serde::Serialize, Clone)]
 pub struct MacroConfig {
+    pub name: String,
     pub button0: ButtonConfig,
     pub button1: ButtonConfig,
     pub button2: ButtonConfig,
