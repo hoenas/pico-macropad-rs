@@ -36,8 +36,27 @@ pub fn read_config_file(
 ) -> anyhow::Result<MacroConfig> {
     // Load config file
     let (bytes_read, buffer) = read_file(root_dir, filename)?;
-    let config: MacroConfig = serde_json::from_slice(&buffer[..bytes_read])
+    let mut config: MacroConfig = serde_json::from_slice(&buffer[..bytes_read])
         .map_err(|_| Error::msg("Failed to parse config"))?;
+    // Reverse keystrokes for easier popping later
+    config.button0.keystroke.reverse();
+    config.button1.keystroke.reverse();
+    config.button2.keystroke.reverse();
+    config.button3.keystroke.reverse();
+    config.button4.keystroke.reverse();
+    config.button5.keystroke.reverse();
+    config.button6.keystroke.reverse();
+    config.button7.keystroke.reverse();
+    config.button8.keystroke.reverse();
+    config.button9.keystroke.reverse();
+    config.menu_encoder.keystroke_left.reverse();
+    config.menu_encoder.keystroke_right.reverse();
+    config.encoder1.keystroke_left.reverse();
+    config.encoder1.keystroke_right.reverse();
+    config.encoder1.keystroke_push.reverse();
+    config.encoder2.keystroke_left.reverse();
+    config.encoder2.keystroke_right.reverse();
+    config.encoder2.keystroke_push.reverse();
     Ok(config)
 }
 

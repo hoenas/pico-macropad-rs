@@ -2,7 +2,7 @@
 #![no_main]
 
 extern crate alloc;
-use alloc::string::String;
+use alloc::{string::String, vec::Vec};
 use usbd_human_interface_device::page::Keyboard;
 pub mod containers;
 pub mod dummy_time_source;
@@ -31,7 +31,7 @@ pub struct MacroConfig {
 #[derive(serde::Deserialize, serde::Serialize, Clone)]
 pub struct ButtonConfig {
     pub display_text: String,
-    pub key: KeyboardCode,
+    pub keystroke: Vec<Vec<KeyboardCode>>,
 }
 
 #[repr(u8)]
@@ -223,14 +223,14 @@ impl KeyboardCode {
 #[derive(serde::Deserialize, serde::Serialize, Clone)]
 pub struct EncoderConfig {
     pub display_text: String,
-    pub left: KeyboardCode,
-    pub right: KeyboardCode,
-    pub push: KeyboardCode,
+    pub keystroke_left: Vec<Vec<KeyboardCode>>,
+    pub keystroke_right: Vec<Vec<KeyboardCode>>,
+    pub keystroke_push: Vec<Vec<KeyboardCode>>,
 }
 
 #[derive(serde::Deserialize, serde::Serialize, Clone)]
 pub struct MenuEncoderConfig {
     pub display_text: String,
-    pub left: KeyboardCode,
-    pub right: KeyboardCode,
+    pub keystroke_left: Vec<Vec<KeyboardCode>>,
+    pub keystroke_right: Vec<Vec<KeyboardCode>>,
 }

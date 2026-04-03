@@ -582,7 +582,7 @@ mod app {
         binds = TIMER_IRQ_1,
         priority = 2,
         shared = [timer,keyboard, encoders, buttons, config, menu_mode, led],
-        local = [keyboard_tick_alarm],
+        local = [keyboard_tick_alarm, current_keystroke: Vec<Vec<KeyboardCode>> = Vec::new()],
     )]
     fn keyboard_tick(mut c: keyboard_tick::Context) {
         c.shared.led.lock(|l| l.set_low().unwrap());
@@ -596,71 +596,87 @@ mod app {
 
         let mut menu_mode = false;
         c.shared.menu_mode.lock(|mode| menu_mode = *mode);
-        // Skip writing keyboard reports if we are in menu mode
         let mut keys: Vec<Keyboard> = Vec::new();
         if menu_mode {
+            // We are in menu mode, so we don't want to send any keystrokes to the host
             keys.push(Keyboard::NoEventIndicated);
+        } else if !c.local.current_keystroke.is_empty() {
+            // We are currently replaying a keystroke, so we don't want to send any new keystrokes to the host until we are done with the current one
+            // Take one keystroke from the current keystroke and send it to the host
+            let current_keystroke = c.local.current_keystroke.pop().unwrap();
+            for key in current_keystroke {
+                keys.push(key.to_keyboard());
+            }
         } else {
+            // We are not in menu mode nor do we currently replay a keystroke, so we want to send the keystrokes to the host
             (c.shared.buttons, c.shared.encoders, c.shared.config).lock(
                 |buttons, encoders, config| {
+                    // If any button or rotary encoder is pressed/rotated, we set the current keystroke to the corresponding keystroke from the config,
+                    // which will then be sent to the host in the next iterations of this task until all keystrokes have been sent.
+                    // We need to reverse the order here once in order for the keystrokes to be sent in the correct order,
+                    //since we pop keystrokes from the back of the vector in the sending logic above.
                     if buttons.pad0.pressed {
-                        keys.push(config.button0.key.to_keyboard());
+                        let mut keystroke = config.button0.keystroke.clone();
+                        keystroke.reverse();
+                        *c.local.current_keystroke = keystroke;
                     }
                     if buttons.pad1.pressed {
-                        keys.push(config.button1.key.to_keyboard());
+                        let mut keystroke = config.button1.keystroke.clone();
+                        keystroke.reverse();
+                        *c.local.current_keystroke = config.button1.keystroke.clone();
                     }
                     if buttons.pad2.pressed {
-                        keys.push(config.button2.key.to_keyboard());
+                        *c.local.current_keystroke = config.button2.keystroke.clone();
                     }
                     if buttons.pad3.pressed {
-                        keys.push(config.button3.key.to_keyboard());
+                        *c.local.current_keystroke = config.button3.keystroke.clone();
                     }
                     if buttons.pad4.pressed {
-                        keys.push(config.button4.key.to_keyboard());
+                        *c.local.current_keystroke = config.button4.keystroke.clone();
                     }
                     if buttons.pad5.pressed {
-                        keys.push(config.button5.key.to_keyboard());
+                        *c.local.current_keystroke = config.button5.keystroke.clone();
                     }
                     if buttons.pad6.pressed {
-                        keys.push(config.button6.key.to_keyboard());
+                        *c.local.current_keystroke = config.button6.keystroke.clone();
                     }
                     if buttons.pad7.pressed {
-                        keys.push(config.button7.key.to_keyboard());
+                        *c.local.current_keystroke = config.button7.keystroke.clone();
                     }
                     if buttons.pad8.pressed {
-                        keys.push(config.button8.key.to_keyboard());
+                        *c.local.current_keystroke = config.button8.keystroke.clone();
                     }
                     if buttons.pad9.pressed {
-                        keys.push(config.button9.key.to_keyboard());
+                        *c.local.current_keystroke = config.button9.keystroke.clone();
                     }
                     // Encoder 0
                     let delta = encoders.menu_encoder.read_delta();
                     if delta < 0 {
-                        keys.push(config.menu_encoder.left.to_keyboard());
+                        *c.local.current_keystroke = config.menu_encoder.keystroke_left.clone();
                     } else if delta > 0 {
-                        keys.push(config.menu_encoder.right.to_keyboard());
+                        *c.local.current_keystroke = config.menu_encoder.keystroke_right.clone();
                     }
                     // Encoder 1 push button is reserved for menu navigation,
                     // so we don't check it here
                     // Encoder 2
                     let delta = encoders.encoder1.read_delta();
                     if delta < 0 {
-                        keys.push(config.encoder1.left.to_keyboard());
+                        *c.local.current_keystroke = config.encoder1.keystroke_left.clone();
                     } else if delta > 0 {
-                        keys.push(config.encoder1.right.to_keyboard());
+                        *c.local.current_keystroke = config.encoder1.keystroke_right.clone();
                     }
                     if encoders.encoder1.button {
-                        keys.push(config.encoder1.push.to_keyboard());
+                        *c.local.current_keystroke = config.encoder1.keystroke_push.clone();
                     }
                     // Encoder 3
                     let delta = encoders.encoder2.read_delta();
                     if delta < 0 {
-                        keys.push(config.encoder2.left.to_keyboard());
+                        *c.local.current_keystroke = config.encoder2.keystroke_left.clone();
                     } else if delta > 0 {
-                        keys.push(config.encoder2.right.to_keyboard());
+                        *c.local.current_keystroke = config.encoder2.keystroke_right.clone();
                     }
                     if encoders.encoder2.button {
-                        keys.push(config.encoder2.push.to_keyboard());
+                        *c.local.current_keystroke = config.encoder2.keystroke_push.clone();
                     }
                 },
             );
