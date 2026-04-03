@@ -18,7 +18,7 @@ mod app {
     use fugit::MicrosDurationU32;
     use pico_macropad_rs::containers::{Encoders, MacroPadButtons};
     use pico_macropad_rs::dummy_time_source::DummyTimesource;
-    use pico_macropad_rs::read_config::write_last_config;
+    use pico_macropad_rs::read_config::{write_example_config_file, write_last_config};
     use pico_macropad_rs::update_display::CHARACTER_STYLE;
     use pico_macropad_rs::*;
     use rotary_encoder_hal::DefaultPhase;
@@ -379,12 +379,18 @@ mod app {
                 }
             })
             .unwrap();
-        let last_config = read_config::get_last_config(&root_dir).unwrap_or(
-            file_names
-                .first()
-                .cloned()
-                .unwrap_or(String::from("No config found")),
-        );
+        write_example_config_file(&root_dir, &"example.cfg");
+        let mut menu_mode = false;
+
+        let last_config = match read_config::get_last_config(&root_dir) {
+            Ok(config) => config,
+            Err(_) => {
+                menu_mode = true;
+                String::new()
+            }
+        };
+        let mut config = MacroConfig::default();
+        if !menu_mode {
         Text::with_alignment(
             &alloc::format!("Loading last config:\n{}", last_config),
             display.bounding_box().top_left + Point::new(0, 30),
@@ -395,7 +401,14 @@ mod app {
         .unwrap();
         display.flush().unwrap();
 
-        let config = read_config::read_config_file(&root_dir, last_config.as_str()).unwrap();
+            config = match read_config::read_config_file(&root_dir, last_config.as_str()) {
+                Ok(config) => config,
+                Err(_) => {
+                    menu_mode = true;
+                    MacroConfig::default()
+                }
+            };
+        }
         drop(root_dir);
         drop(volume0);
         let style = embedded_menu::MenuStyle::new(BinaryColor::On)
@@ -460,7 +473,7 @@ mod app {
                 encoders: Encoders::default(),
                 config,
                 buttons: MacroPadButtons::default(),
-                menu_mode: false,
+                menu_mode,
                 keyboard,
             },
             Local {

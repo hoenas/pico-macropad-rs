@@ -10,7 +10,7 @@ pub mod example_config;
 pub mod read_config;
 pub mod update_display;
 
-#[derive(serde::Deserialize, serde::Serialize, Clone)]
+#[derive(serde::Deserialize, serde::Serialize, Clone, Default)]
 pub struct MacroConfig {
     pub name: String,
     pub button0: ButtonConfig,
@@ -28,15 +28,16 @@ pub struct MacroConfig {
     pub encoder2: EncoderConfig,
 }
 
-#[derive(serde::Deserialize, serde::Serialize, Clone)]
+#[derive(serde::Deserialize, serde::Serialize, Clone, Default)]
 pub struct ButtonConfig {
     pub display_text: String,
     pub keystroke: Vec<Vec<KeyboardCode>>,
 }
 
 #[repr(u8)]
-#[derive(serde::Deserialize, serde::Serialize, Copy, Clone)]
+#[derive(serde::Deserialize, serde::Serialize, Copy, Clone, Default)]
 pub enum KeyboardCode {
+    #[default]
     NoEventIndicated = 0x00,
     ErrorRollOver = 0x01,
     POSTFail = 0x02,
@@ -220,7 +221,7 @@ impl KeyboardCode {
     }
 }
 
-#[derive(serde::Deserialize, serde::Serialize, Clone)]
+#[derive(serde::Deserialize, serde::Serialize, Clone, Default)]
 pub struct EncoderConfig {
     pub display_text: String,
     pub keystroke_left: Vec<Vec<KeyboardCode>>,
@@ -228,7 +229,7 @@ pub struct EncoderConfig {
     pub keystroke_push: Vec<Vec<KeyboardCode>>,
 }
 
-#[derive(serde::Deserialize, serde::Serialize, Clone)]
+#[derive(serde::Deserialize, serde::Serialize, Clone, Default)]
 pub struct MenuEncoderConfig {
     pub display_text: String,
     pub keystroke_left: Vec<Vec<KeyboardCode>>,
