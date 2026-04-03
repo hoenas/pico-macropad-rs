@@ -56,6 +56,7 @@ pub fn update_display(
     config: &MacroConfig,
     rotation_counter: usize,
 ) {
+    display.clear();
     Text::with_alignment(
         config.name.rotate(rotation_counter, 21).as_str(),
         display.bounding_box().top_left + Point::new(0, 10),

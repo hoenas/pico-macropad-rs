@@ -106,9 +106,8 @@ mod app {
     const KEYBOARD_UPDATE_MILIS: usize = 1;
     const KEYBOARD_UPDATE: MicrosDurationU32 =
         MicrosDurationU32::millis(KEYBOARD_UPDATE_MILIS as u32);
-    const KEYBOARD_KEY_CHECK_INTERVAL: usize = 50 / KEYBOARD_UPDATE_MILIS;
     const NUM_LEDS: usize = 8;
-    const TEXT_ROTATION_DOWNSAMPLING_FACTOR: usize = 4;
+    const TEXT_ROTATION_DOWNSAMPLING_FACTOR: usize = 8;
 
     #[shared]
     struct Shared {
@@ -207,10 +206,6 @@ mod app {
         button8: Pin<Gpio8, FunctionSio<SioInput>, PullUp>,
         button9: Pin<Gpio9, FunctionSio<SioInput>, PullUp>,
         usb_device: UsbDevice<'static, hal::usb::UsbBus>,
-    }
-
-    fn check_state_changed(interval: usize, counter: usize) -> bool {
-        counter as f32 / interval as f32 > 0.75
     }
 
     #[init(local = [usb_alloc: Option<UsbBusAllocator<hal::usb::UsbBus>> = None])]
@@ -507,7 +502,6 @@ mod app {
     )]
     fn display_update(mut c: display_update::Context) {
         c.shared.led.lock(|l| l.set_high().unwrap());
-        c.local.display.clear();
         // Check if we are in menu mode
         let mut menu_mode = false;
         c.shared.menu_mode.lock(|mode| menu_mode = *mode);
@@ -554,13 +548,20 @@ mod app {
                     c.shared.menu_mode.lock(|menu_mode| *menu_mode = false);
                 }
             }
+            c.local.display.clear();
             menu.update(c.local.display);
             menu.draw(c.local.display);
         } else {
             *c.local.rotation_counter += 1;
             c.shared.config.lock(|config| {
                 let rotation = *c.local.rotation_counter / TEXT_ROTATION_DOWNSAMPLING_FACTOR;
-                pico_macropad_rs::update_display::update_display(c.local.display, config, rotation);
+                if *c.local.rotation_counter % TEXT_ROTATION_DOWNSAMPLING_FACTOR == 0 {
+                    pico_macropad_rs::update_display::update_display(
+                        c.local.display,
+                        config,
+                        rotation,
+                    );
+                }
             });
             // Update LEDs
             // Write RGB values
@@ -581,7 +582,7 @@ mod app {
         binds = TIMER_IRQ_1,
         priority = 2,
         shared = [timer,keyboard, encoders, buttons, config, menu_mode, led],
-        local = [keyboard_tick_alarm, ticks_since_key_check: usize = 0],
+        local = [keyboard_tick_alarm],
     )]
     fn keyboard_tick(mut c: keyboard_tick::Context) {
         c.shared.led.lock(|l| l.set_low().unwrap());
@@ -596,77 +597,73 @@ mod app {
         let mut menu_mode = false;
         c.shared.menu_mode.lock(|mode| menu_mode = *mode);
         // Skip writing keyboard reports if we are in menu mode
-
-        if *c.local.ticks_since_key_check > KEYBOARD_KEY_CHECK_INTERVAL {
-            *c.local.ticks_since_key_check = 0;
-            let mut keys: Vec<Keyboard> = Vec::new();
-            if menu_mode {
-                keys.push(Keyboard::NoEventIndicated);
-            } else {
-                (c.shared.buttons, c.shared.encoders, c.shared.config).lock(
-                    |buttons, encoders, config| {
-                        if buttons.pad0.pressed {
-                            keys.push(config.button0.key.to_keyboard());
-                        }
-                        if buttons.pad1.pressed {
-                            keys.push(config.button1.key.to_keyboard());
-                        }
-                        if buttons.pad2.pressed {
-                            keys.push(config.button2.key.to_keyboard());
-                        }
-                        if buttons.pad3.pressed {
-                            keys.push(config.button3.key.to_keyboard());
-                        }
-                        if buttons.pad4.pressed {
-                            keys.push(config.button4.key.to_keyboard());
-                        }
-                        if buttons.pad5.pressed {
-                            keys.push(config.button5.key.to_keyboard());
-                        }
-                        if buttons.pad6.pressed {
-                            keys.push(config.button6.key.to_keyboard());
-                        }
-                        if buttons.pad7.pressed {
-                            keys.push(config.button7.key.to_keyboard());
-                        }
-                        if buttons.pad8.pressed {
-                            keys.push(config.button8.key.to_keyboard());
-                        }
-                        if buttons.pad9.pressed {
-                            keys.push(config.button9.key.to_keyboard());
-                        }
-                        // Encoder 0
-                        let delta = encoders.menu_encoder.read_delta();
-                        if delta < 0 {
-                            keys.push(config.menu_encoder.left.to_keyboard());
-                        } else if delta > 0 {
-                            keys.push(config.menu_encoder.right.to_keyboard());
-                        }
-                        // Encoder 1 push button is reserved for menu navigation,
-                        // so we don't check it here
-                        // Encoder 2
-                        let delta = encoders.encoder1.read_delta();
-                        if delta < 0 {
-                            keys.push(config.encoder1.left.to_keyboard());
-                        } else if delta > 0 {
-                            keys.push(config.encoder1.right.to_keyboard());
-                        }
-                        if encoders.encoder1.button {
-                            keys.push(config.encoder1.push.to_keyboard());
-                        }
-                        // Encoder 3
-                        let delta = encoders.encoder2.read_delta();
-                        if delta < 0 {
-                            keys.push(config.encoder2.left.to_keyboard());
-                        } else if delta > 0 {
-                            keys.push(config.encoder2.right.to_keyboard());
-                        }
-                        if encoders.encoder2.button {
-                            keys.push(config.encoder2.push.to_keyboard());
-                        }
-                    },
-                );
-            }
+        let mut keys: Vec<Keyboard> = Vec::new();
+        if menu_mode {
+            keys.push(Keyboard::NoEventIndicated);
+        } else {
+            (c.shared.buttons, c.shared.encoders, c.shared.config).lock(
+                |buttons, encoders, config| {
+                    if buttons.pad0.pressed {
+                        keys.push(config.button0.key.to_keyboard());
+                    }
+                    if buttons.pad1.pressed {
+                        keys.push(config.button1.key.to_keyboard());
+                    }
+                    if buttons.pad2.pressed {
+                        keys.push(config.button2.key.to_keyboard());
+                    }
+                    if buttons.pad3.pressed {
+                        keys.push(config.button3.key.to_keyboard());
+                    }
+                    if buttons.pad4.pressed {
+                        keys.push(config.button4.key.to_keyboard());
+                    }
+                    if buttons.pad5.pressed {
+                        keys.push(config.button5.key.to_keyboard());
+                    }
+                    if buttons.pad6.pressed {
+                        keys.push(config.button6.key.to_keyboard());
+                    }
+                    if buttons.pad7.pressed {
+                        keys.push(config.button7.key.to_keyboard());
+                    }
+                    if buttons.pad8.pressed {
+                        keys.push(config.button8.key.to_keyboard());
+                    }
+                    if buttons.pad9.pressed {
+                        keys.push(config.button9.key.to_keyboard());
+                    }
+                    // Encoder 0
+                    let delta = encoders.menu_encoder.read_delta();
+                    if delta < 0 {
+                        keys.push(config.menu_encoder.left.to_keyboard());
+                    } else if delta > 0 {
+                        keys.push(config.menu_encoder.right.to_keyboard());
+                    }
+                    // Encoder 1 push button is reserved for menu navigation,
+                    // so we don't check it here
+                    // Encoder 2
+                    let delta = encoders.encoder1.read_delta();
+                    if delta < 0 {
+                        keys.push(config.encoder1.left.to_keyboard());
+                    } else if delta > 0 {
+                        keys.push(config.encoder1.right.to_keyboard());
+                    }
+                    if encoders.encoder1.button {
+                        keys.push(config.encoder1.push.to_keyboard());
+                    }
+                    // Encoder 3
+                    let delta = encoders.encoder2.read_delta();
+                    if delta < 0 {
+                        keys.push(config.encoder2.left.to_keyboard());
+                    } else if delta > 0 {
+                        keys.push(config.encoder2.right.to_keyboard());
+                    }
+                    if encoders.encoder2.button {
+                        keys.push(config.encoder2.push.to_keyboard());
+                    }
+                },
+            );
             // Send keyboard report
             (c.shared.keyboard).lock(|keyboard| match keyboard.device().write_report(keys) {
                 Err(UsbHidError::WouldBlock) => {}
@@ -677,7 +674,6 @@ mod app {
                 }
             });
         }
-        *c.local.ticks_since_key_check += 1;
         c.local.keyboard_tick_alarm.clear_interrupt();
         c.local
             .keyboard_tick_alarm
