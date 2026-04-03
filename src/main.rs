@@ -103,7 +103,7 @@ mod app {
     use usbd_human_interface_device::page::Keyboard;
 
     const DISPLAY_UPDATE: MicrosDurationU32 = MicrosDurationU32::millis(25);
-    const KEYBOARD_UPDATE_MILIS: usize = 1;
+    const KEYBOARD_UPDATE_MILIS: usize = 25;
     const KEYBOARD_UPDATE: MicrosDurationU32 =
         MicrosDurationU32::millis(KEYBOARD_UPDATE_MILIS as u32);
     const NUM_LEDS: usize = 8;
@@ -582,7 +582,7 @@ mod app {
         binds = TIMER_IRQ_1,
         priority = 2,
         shared = [timer,keyboard, encoders, buttons, config, menu_mode, led],
-        local = [keyboard_tick_alarm, current_keystroke: Vec<Vec<KeyboardCode>> = Vec::new()],
+        local = [keyboard_tick_alarm, current_keystroke: Vec<Vec<KeyboardCode>> = Vec::new(), no_op_tick: bool = false],
     )]
     fn keyboard_tick(mut c: keyboard_tick::Context) {
         c.shared.led.lock(|l| l.set_low().unwrap());
@@ -600,13 +600,22 @@ mod app {
         if menu_mode {
             // We are in menu mode, so we don't want to send any keystrokes to the host
             keys.push(Keyboard::NoEventIndicated);
-        } else if !c.local.current_keystroke.is_empty() {
+        } else if !c.local.current_keystroke.is_empty() && !*c.local.no_op_tick {
             // We are currently replaying a keystroke, so we don't want to send any new keystrokes to the host until we are done with the current one
             // Take one keystroke from the current keystroke and send it to the host
             let current_keystroke = c.local.current_keystroke.pop().unwrap();
             for key in current_keystroke {
                 keys.push(key.to_keyboard());
             }
+            *c.local.no_op_tick = true;
+            *c.local.no_op_tick = true;
+            // To register the keystrokes correctly, we need to send a "no event" report after sending the keystrokes,
+            // so we set a flag to send a "no event" report in the next tick
+            *c.local.no_op_tick = true;
+        } else if *c.local.no_op_tick {
+            // We have just sent a keystroke in the previous tick, so we need to send a "no event" report to reset the keyboard state on the host
+            keys.push(Keyboard::NoEventIndicated);
+            *c.local.no_op_tick = false;
         } else {
             // We are not in menu mode nor do we currently replay a keystroke, so we want to send the keystrokes to the host
             (c.shared.buttons, c.shared.encoders, c.shared.config).lock(
@@ -616,13 +625,9 @@ mod app {
                     // We need to reverse the order here once in order for the keystrokes to be sent in the correct order,
                     //since we pop keystrokes from the back of the vector in the sending logic above.
                     if buttons.pad0.pressed {
-                        let mut keystroke = config.button0.keystroke.clone();
-                        keystroke.reverse();
-                        *c.local.current_keystroke = keystroke;
+                        *c.local.current_keystroke = config.button0.keystroke.clone();
                     }
                     if buttons.pad1.pressed {
-                        let mut keystroke = config.button1.keystroke.clone();
-                        keystroke.reverse();
                         *c.local.current_keystroke = config.button1.keystroke.clone();
                     }
                     if buttons.pad2.pressed {
@@ -680,16 +685,16 @@ mod app {
                     }
                 },
             );
-            // Send keyboard report
-            (c.shared.keyboard).lock(|keyboard| match keyboard.device().write_report(keys) {
-                Err(UsbHidError::WouldBlock) => {}
-                Err(UsbHidError::Duplicate) => {}
-                Ok(_) => {}
-                Err(e) => {
-                    core::panic!("Failed to write keyboard report: {:?}", e)
-                }
-            });
         }
+        // Send keyboard report
+        (c.shared.keyboard).lock(|keyboard| match keyboard.device().write_report(keys) {
+            Err(UsbHidError::WouldBlock) => {}
+            Err(UsbHidError::Duplicate) => {}
+            Ok(_) => {}
+            Err(e) => {
+                core::panic!("Failed to write keyboard report: {:?}", e)
+            }
+        });
         c.local.keyboard_tick_alarm.clear_interrupt();
         c.local
             .keyboard_tick_alarm
