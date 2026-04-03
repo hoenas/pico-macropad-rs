@@ -81,5 +81,35 @@ pub fn get_example_config() -> MacroConfig {
             keystroke_right: vec![vec![KeyboardCode::LeftControl, KeyboardCode::V]],
             keystroke_push: vec![vec![KeyboardCode::LeftControl, KeyboardCode::V]],
         },
+        leds: [
+            LedConfig { r: 255, g: 0, b: 0 },
+            LedConfig { r: 0, g: 255, b: 0 },
+            LedConfig { r: 0, g: 0, b: 255 },
+            LedConfig {
+                r: 255,
+                g: 255,
+                b: 0,
+            },
+            LedConfig {
+                r: 255,
+                g: 0,
+                b: 255,
+            },
+            LedConfig {
+                r: 0,
+                g: 255,
+                b: 255,
+            },
+            LedConfig {
+                r: 255,
+                g: 255,
+                b: 255,
+            },
+            LedConfig {
+                r: 128,
+                g: 128,
+                b: 128,
+            },
+        ],
     }
 }

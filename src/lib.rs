@@ -9,6 +9,7 @@ pub mod dummy_time_source;
 pub mod example_config;
 pub mod read_config;
 pub mod update_display;
+pub const NUM_LEDS: usize = 8;
 
 #[derive(serde::Deserialize, serde::Serialize, Clone, Default)]
 pub struct MacroConfig {
@@ -26,6 +27,7 @@ pub struct MacroConfig {
     pub menu_encoder: MenuEncoderConfig,
     pub encoder1: EncoderConfig,
     pub encoder2: EncoderConfig,
+    pub leds: [LedConfig; NUM_LEDS],
 }
 
 #[derive(serde::Deserialize, serde::Serialize, Clone, Default)]
@@ -234,4 +236,11 @@ pub struct MenuEncoderConfig {
     pub display_text: String,
     pub keystroke_left: Vec<Vec<KeyboardCode>>,
     pub keystroke_right: Vec<Vec<KeyboardCode>>,
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Clone, Default)]
+pub struct LedConfig {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
 }

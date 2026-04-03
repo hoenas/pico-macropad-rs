@@ -106,7 +106,6 @@ mod app {
     const KEYBOARD_UPDATE_MILIS: usize = 25;
     const KEYBOARD_UPDATE: MicrosDurationU32 =
         MicrosDurationU32::millis(KEYBOARD_UPDATE_MILIS as u32);
-    const NUM_LEDS: usize = 8;
     const TEXT_ROTATION_DOWNSAMPLING_FACTOR: usize = 8;
 
     #[shared]
@@ -391,15 +390,15 @@ mod app {
         };
         let mut config = MacroConfig::default();
         if !menu_mode {
-        Text::with_alignment(
-            &alloc::format!("Loading last config:\n{}", last_config),
-            display.bounding_box().top_left + Point::new(0, 30),
-            CHARACTER_STYLE,
-            Alignment::Left,
-        )
-        .draw(&mut display)
-        .unwrap();
-        display.flush().unwrap();
+            Text::with_alignment(
+                &alloc::format!("Loading last config:\n{}", last_config),
+                display.bounding_box().top_left + Point::new(0, 30),
+                CHARACTER_STYLE,
+                Alignment::Left,
+            )
+            .draw(&mut display)
+            .unwrap();
+            display.flush().unwrap();
 
             config = match read_config::read_config_file(&root_dir, last_config.as_str()) {
                 Ok(config) => config,
@@ -579,11 +578,11 @@ mod app {
             // Update LEDs
             // Write RGB values
             let mut data: [RGB8; NUM_LEDS] = [RGB8::default(); NUM_LEDS];
-            for (i, led) in data.iter_mut().enumerate() {
-                let red = 30u8 * (i as u8 + 1_u8);
-                let blue = 255u8 - 30u8 * (i as u8 + 1_u8);
-                *led = RGB8::new(red, 0, blue);
-            }
+            c.shared.config.lock(|config| {
+                for (i, led_config) in config.leds.iter().enumerate() {
+                    data[i] = RGB8::new(led_config.r, led_config.g, led_config.b);
+                }
+            });
             c.local.rgb_leds.write(data.iter().cloned()).unwrap();
         }
         c.local.display.flush().unwrap();
