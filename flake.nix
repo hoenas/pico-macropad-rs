@@ -28,6 +28,7 @@
               flip-link
               probe-rs-tools
               elf2uf2-rs
+              imagemagick
             ];
           };
         }
