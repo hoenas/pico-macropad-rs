@@ -25,6 +25,9 @@ const elements = {
     downloadIconBtn: document.getElementById('download-icon'),
     iconCanvas: document.getElementById('icon-canvas'),
     displayPreview: document.getElementById('display-preview'),
+    validationErrors: document.getElementById('validation-errors'),
+    loadJsonFile: document.getElementById('load-json-file'),
+    loadJsonBtn: document.getElementById('load-json-btn'),
 };
 
 const buttonIconBlobs = new Map();
@@ -303,8 +306,195 @@ function updateDisplayPreview(config) {
     elements.displayPreview.innerHTML = html;
 }
 
+function validateConfig(config) {
+    const errors = [];
+
+    // Check name
+    if (!config.name || typeof config.name !== 'string') {
+        errors.push('Config name must be a non-empty string.');
+    }
+
+    // Check buttons
+    for (let i = 0; i < 10; i++) {
+        const btn = config[`button${i}`];
+        if (!btn || typeof btn !== 'object') {
+            errors.push(`Button ${i + 1}: Invalid structure.`);
+            continue;
+        }
+        if (typeof btn.display_text !== 'string') {
+            errors.push(`Button ${i + 1}: display_text must be a string.`);
+        }
+        if (btn.display_icon !== null && typeof btn.display_icon !== 'string') {
+            errors.push(`Button ${i + 1}: display_icon must be a string or null.`);
+        }
+        if (!Array.isArray(btn.keystroke)) {
+            errors.push(`Button ${i + 1}: keystroke must be an array.`);
+        } else {
+            btn.keystroke.forEach((chord, idx) => {
+                if (!Array.isArray(chord)) {
+                    errors.push(`Button ${i + 1}: keystroke[${idx}] must be an array.`);
+                } else {
+                    chord.forEach(key => {
+                        if (!KEY_CODES.includes(key)) {
+                            errors.push(`Button ${i + 1}: Invalid key '${key}' in keystroke.`);
+                        }
+                    });
+                }
+            });
+        }
+    }
+
+    // Check menu_encoder
+    const menuEnc = config.menu_encoder;
+    if (!menuEnc || typeof menuEnc !== 'object') {
+        errors.push('Menu Encoder: Invalid structure.');
+    } else {
+        if (typeof menuEnc.display_text !== 'string') {
+            errors.push('Menu Encoder: display_text must be a string.');
+        }
+        if (menuEnc.display_icon !== null && typeof menuEnc.display_icon !== 'string') {
+            errors.push('Menu Encoder: display_icon must be a string or null.');
+        }
+        ['keystroke_left', 'keystroke_right'].forEach(dir => {
+            if (!Array.isArray(menuEnc[dir])) {
+                errors.push(`Menu Encoder: ${dir} must be an array.`);
+            } else {
+                menuEnc[dir].forEach((chord, idx) => {
+                    if (!Array.isArray(chord)) {
+                        errors.push(`Menu Encoder: ${dir}[${idx}] must be an array.`);
+                    } else {
+                        chord.forEach(key => {
+                            if (!KEY_CODES.includes(key)) {
+                                errors.push(`Menu Encoder: Invalid key '${key}' in ${dir}.`);
+                            }
+                        });
+                    }
+                });
+            }
+        });
+    }
+
+    // Check encoder1 and encoder2
+    ['encoder1', 'encoder2'].forEach(encName => {
+        const enc = config[encName];
+        if (!enc || typeof enc !== 'object') {
+            errors.push(`${encName}: Invalid structure.`);
+            return;
+        }
+        if (typeof enc.display_text !== 'string') {
+            errors.push(`${encName}: display_text must be a string.`);
+        }
+        if (enc.display_icon !== null && typeof enc.display_icon !== 'string') {
+            errors.push(`${encName}: display_icon must be a string or null.`);
+        }
+        ['keystroke_left', 'keystroke_right', 'keystroke_push'].forEach(dir => {
+            if (!Array.isArray(enc[dir])) {
+                errors.push(`${encName}: ${dir} must be an array.`);
+            } else {
+                enc[dir].forEach((chord, idx) => {
+                    if (!Array.isArray(chord)) {
+                        errors.push(`${encName}: ${dir}[${idx}] must be an array.`);
+                    } else {
+                        chord.forEach(key => {
+                            if (!KEY_CODES.includes(key)) {
+                                errors.push(`${encName}: Invalid key '${key}' in ${dir}.`);
+                            }
+                        });
+                    }
+                });
+            }
+        });
+    });
+
+    // Check leds
+    if (!Array.isArray(config.leds) || config.leds.length !== 8) {
+        errors.push('LEDs must be an array of 8 objects.');
+    } else {
+        config.leds.forEach((led, idx) => {
+            if (typeof led !== 'object' || led === null) {
+                errors.push(`LED ${idx + 1}: Must be an object.`);
+            } else {
+                ['r', 'g', 'b'].forEach(c => {
+                    if (typeof led[c] !== 'number' || led[c] < 0 || led[c] > 255 || !Number.isInteger(led[c])) {
+                        errors.push(`LED ${idx + 1}: ${c} must be an integer 0-255.`);
+                    }
+                });
+            }
+        });
+    }
+
+    return errors;
+}
+
+function loadConfigIntoForm(config) {
+    elements.configName.value = config.name || '';
+
+    buttonFields.forEach((field, idx) => {
+        const btn = config[field.id];
+        if (btn) {
+            document.getElementById(`${field.id}-text`).value = btn.display_text || '';
+            document.getElementById(`${field.id}-icon`).value = btn.display_icon || '';
+            const keystrokes = btn.keystroke || [];
+            const text = keystrokes.map(chord => chord.join(',')).join('\n');
+            document.getElementById(`${field.id}-keystrokes`).value = text;
+        }
+    });
+
+    const encoderIds = ['menu_encoder', 'encoder1', 'encoder2'];
+    encoderIds.forEach(encId => {
+        const enc = config[encId];
+        if (enc) {
+            document.getElementById(`${encId}-text`).value = enc.display_text || '';
+            document.getElementById(`${encId}-icon`).value = enc.display_icon || '';
+            const types = encId === 'menu_encoder' ? ['left', 'right'] : ['left', 'right', 'push'];
+            types.forEach(type => {
+                const keystrokes = enc[`keystroke_${type}`] || [];
+                const text = keystrokes.map(chord => chord.join(',')).join('\n');
+                document.getElementById(`${encId}-${type}-keystrokes`).value = text;
+            });
+        }
+    });
+
+    if (config.leds && Array.isArray(config.leds)) {
+        config.leds.forEach((led, idx) => {
+            if (led && typeof led === 'object') {
+                const r = Math.max(0, Math.min(255, led.r || 0));
+                const g = Math.max(0, Math.min(255, led.g || 0));
+                const b = Math.max(0, Math.min(255, led.b || 0));
+                const hex = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+                document.getElementById(`led-${idx}`).value = hex;
+            }
+        });
+    }
+}
+
+function loadJson() {
+    const file = elements.loadJsonFile.files[0];
+    if (!file) {
+        alert('Please select a JSON file first.');
+        return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+        try {
+            const config = JSON.parse(reader.result);
+            loadConfigIntoForm(config);
+            updateOutput();
+        } catch (e) {
+            alert('Invalid JSON file: ' + e.message);
+        }
+    };
+    reader.readAsText(file);
+}
+
 function updateOutput() {
     const config = buildConfig();
+    const errors = validateConfig(config);
+    if (errors.length > 0) {
+        elements.validationErrors.innerHTML = '<ul>' + errors.map(e => `<li>${e}</li>`).join('') + '</ul>';
+    } else {
+        elements.validationErrors.innerHTML = '';
+    }
     elements.outputJson.value = JSON.stringify(config, null, 4);
     updateDisplayPreview(config);
 }
@@ -476,6 +666,7 @@ elements.downloadJsonBtn.addEventListener('click', downloadJson);
 elements.convertIconBtn.addEventListener('click', updateIconFromFile);
 elements.downloadIconBtn.addEventListener('click', downloadIcon);
 elements.loadExampleBtn.addEventListener('click', loadExampleConfig);
+elements.loadJsonBtn.addEventListener('click', loadJson);
 
 document.addEventListener('change', event => {
     const target = event.target;

@@ -107,8 +107,26 @@ textarea {
 
 .actions-panel {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
     gap: 12px;
+}
+
+#validation-errors {
+    color: #ff6b6b;
+    background: #2d1b1b;
+    border: 1px solid #ff6b6b;
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 10px;
+}
+
+#validation-errors ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+#validation-errors li {
+    margin-bottom: 5px;
 }
 
 .icon-converter-controls {
