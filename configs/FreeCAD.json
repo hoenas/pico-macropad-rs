@@ -1,0 +1,225 @@
+{
+    "name": "FreeCAD",
+    "button0": {
+        "display_text": "Normal",
+        "display_icon": null,
+        "keystroke": [
+            [
+                "V"
+            ],
+            [
+                "Keyboard1"
+            ]
+        ]
+    },
+    "button1": {
+        "display_text": "Wire",
+        "display_icon": null,
+        "keystroke": [
+            [
+                "V"
+            ],
+            [
+                "Keyboard3"
+            ],
+            [
+                "Keyboard2"
+            ],
+            [
+                "Escape"
+            ]
+        ]
+    },
+    "button2": {
+        "display_text": "Fit",
+        "display_icon": null,
+        "keystroke": [
+            [
+                "V"
+            ],
+            [
+                "F"
+            ]
+        ]
+    },
+    "button3": {
+        "display_text": "Fit Selected",
+        "display_icon": null,
+        "keystroke": [
+            [
+                "V"
+            ],
+            [
+                "S"
+            ]
+        ]
+    },
+    "button4": {
+        "display_text": "Reset",
+        "display_icon": null,
+        "keystroke": [
+            [
+                "Keyboard0"
+            ],
+            [
+                "V"
+            ],
+            [
+                "F"
+            ],
+            [
+                "V"
+            ],
+            [
+                "Keyboard1"
+            ]
+        ]
+    },
+    "button5": {
+        "display_text": "",
+        "display_icon": null,
+        "keystroke": [
+            [
+                "NoEventIndicated"
+            ]
+        ]
+    },
+    "button6": {
+        "display_text": "",
+        "display_icon": null,
+        "keystroke": [
+            [
+                "NoEventIndicated"
+            ]
+        ]
+    },
+    "button7": {
+        "display_text": "",
+        "display_icon": null,
+        "keystroke": [
+            [
+                "NoEventIndicated"
+            ]
+        ]
+    },
+    "button8": {
+        "display_text": "Import",
+        "display_icon": null,
+        "keystroke": [
+            [
+                "LeftControl",
+                "I"
+            ]
+        ]
+    },
+    "button9": {
+        "display_text": "Export",
+        "display_icon": null,
+        "keystroke": [
+            [
+                "LeftControl",
+                "E"
+            ]
+        ]
+    },
+    "menu_encoder": {
+        "display_text": "Vol",
+        "display_icon": null,
+        "keystroke_left": [
+            [
+                "VolumeDown"
+            ]
+        ],
+        "keystroke_right": [
+            [
+                "VolumeUp"
+            ]
+        ]
+    },
+    "encoder1": {
+        "display_text": "Copy/Paste",
+        "display_icon": null,
+        "keystroke_left": [
+            [
+                "LeftControl",
+                "C"
+            ]
+        ],
+        "keystroke_right": [
+            [
+                "LeftControl",
+                "V"
+            ]
+        ],
+        "keystroke_push": [
+            [
+                "LeftControl",
+                "V"
+            ]
+        ]
+    },
+    "encoder2": {
+        "display_text": "Copy/Paste",
+        "display_icon": null,
+        "keystroke_left": [
+            [
+                "LeftControl",
+                "C"
+            ]
+        ],
+        "keystroke_right": [
+            [
+                "LeftControl",
+                "V"
+            ]
+        ],
+        "keystroke_push": [
+            [
+                "LeftControl",
+                "V"
+            ]
+        ]
+    },
+    "leds": [
+        {
+            "r": 203,
+            "g": 51,
+            "b": 59
+        },
+        {
+            "r": 203,
+            "g": 51,
+            "b": 59
+        },
+        {
+            "r": 203,
+            "g": 51,
+            "b": 59
+        },
+        {
+            "r": 203,
+            "g": 51,
+            "b": 59
+        },
+        {
+            "r": 255,
+            "g": 255,
+            "b": 255
+        },
+        {
+            "r": 65,
+            "g": 143,
+            "b": 222
+        },
+        {
+            "r": 65,
+            "g": 143,
+            "b": 222
+        },
+        {
+            "r": 65,
+            "g": 143,
+            "b": 222
+        }
+    ]
+}
