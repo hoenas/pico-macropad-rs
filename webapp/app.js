@@ -564,13 +564,22 @@ function downloadButtonIcon(buttonId) {
     URL.revokeObjectURL(url);
 }
 
+function sanitizeFilename(name) {
+    // Sanitize to 8.3 format: uppercase, alphanum/underscore, max 8 chars, .CFG
+    let base = name.replace(/[^a-zA-Z0-9_]/g, '').toUpperCase();
+    if (base.length === 0) base = 'CONFIG';
+    base = base.substring(0, 8);
+    return base + '.CFG';
+}
+
 function downloadJson() {
     const content = elements.outputJson.value;
     const blob = new Blob([content], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
+    const filename = sanitizeFilename(elements.configName.value.trim() || 'macro_config');
     a.href = url;
-    a.download = `${elements.configName.value.trim() || 'macro_config'}.json`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
 }
