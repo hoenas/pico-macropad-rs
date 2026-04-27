@@ -1,5 +1,6 @@
-use alloc::{fmt::format, format, string::String};
+use alloc::{format, string::String};
 use embedded_graphics::{
+    image::{Image, ImageRawBE},
     mono_font::{ascii::FONT_6X10, MonoTextStyle},
     pixelcolor::BinaryColor,
     prelude::*,
@@ -65,51 +66,76 @@ pub fn update_display(
     )
     .draw(display)
     .unwrap();
+    let buttons = [
+        &config.button0,
+        &config.button1,
+        &config.button2,
+        &config.button3,
+        &config.button4,
+        &config.button5,
+        &config.button6,
+        &config.button7,
+        &config.button8,
+        &config.button9,
+    ];
+
+    let origin = display.bounding_box().top_left;
     Text::with_alignment(
-        format!(
-            "{:^3}|{:^3}        {:^4}",
-            config.encoder1.display_text.rotate(rotation_counter, 4),
-            config.encoder2.display_text.rotate(rotation_counter, 4),
-            config.menu_encoder.display_text.rotate(rotation_counter, 4)
-        )
-        .as_str(),
-        display.bounding_box().top_left + Point::new(0, 30),
+        config.name.as_str(),
+        origin + Point::new(0, 10),
         CHARACTER_STYLE,
         Alignment::Left,
     )
     .draw(display)
     .unwrap();
-    Text::with_alignment(
-        format!(
-            "{:^3}|{:^3}|{:^3}|{:^3}|{:^3}",
-            config.button0.display_text.rotate(rotation_counter, 3),
-            config.button1.display_text.rotate(rotation_counter, 3),
-            config.button2.display_text.rotate(rotation_counter, 3),
-            config.button3.display_text.rotate(rotation_counter, 3),
-            config.button4.display_text.rotate(rotation_counter, 3)
-        )
-        .as_str(),
-        display.bounding_box().top_left + Point::new(0, 50),
-        CHARACTER_STYLE,
-        Alignment::Left,
-    )
-    .draw(display)
-    .unwrap();
-    Text::with_alignment(
-        format!(
-            "{:^3}|{:^3}|{:^3}|{:^3}|{:^3}",
-            config.button5.display_text.rotate(rotation_counter, 3),
-            config.button6.display_text.rotate(rotation_counter, 3),
-            config.button7.display_text.rotate(rotation_counter, 3),
-            config.button8.display_text.rotate(rotation_counter, 3),
-            config.button9.display_text.rotate(rotation_counter, 3)
-        )
-        .as_str(),
-        display.bounding_box().top_left + Point::new(0, 60),
-        CHARACTER_STYLE,
-        Alignment::Left,
-    )
-    .draw(display)
-    .unwrap();
+
+    for row in 0..2 {
+        for col in 0..5 {
+            let idx = row * 5 + col;
+            let button = buttons[idx];
+            let x = (21 * col) as i32;
+            let y = 24 + (row * 20) as i32;
+            let top_left = origin + Point::new(x, y);
+            draw_button_cell(display, button, top_left);
+        }
+    }
     display.flush().unwrap();
+}
+
+fn draw_button_cell<DI>(display: &mut DI, button: &crate::ButtonConfig, top_left: Point)
+where
+    DI: DrawTarget<Color = BinaryColor>,
+    DI::Error: core::fmt::Debug,
+{
+    if let Some(pixels) = &button.display_icon_pixels {
+        draw_icon(display, pixels, top_left);
+    } else {
+        Text::with_alignment(
+            button.display_text.as_str(),
+            top_left + Point::new(10, 14),
+            CHARACTER_STYLE,
+            Alignment::Center,
+        )
+        .draw(display)
+        .unwrap();
+    }
+}
+
+fn draw_icon<DI>(display: &mut DI, pixels: &[u8], top_left: Point)
+where
+    DI: DrawTarget<Color = BinaryColor>,
+    DI::Error: core::fmt::Debug,
+{
+    let mut packed = [0u8; 50];
+    for y in 0..20 {
+        for x in 0..20 {
+            if pixels[y * 20 + x] != 0 {
+                let index = y * 3 + (x / 8);
+                packed[index] |= 0x80 >> (x % 8);
+            }
+        }
+    }
+    Image::new(&ImageRawBE::new(&packed, 20), top_left)
+        .draw(display)
+        .unwrap();
 }

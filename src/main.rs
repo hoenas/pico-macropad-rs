@@ -720,7 +720,7 @@ mod app {
         shared = [led, encoders, timer, buttons],
         local = [menu_encoder, menu_encoder_switch, encoder1, encoder1_switch, encoder2, encoder2_switch, button0, button1, button2, button3, button4, button5, button6, button7, button8, button9],
     )]
-    fn encoder_update(mut c: encoder_update::Context) {
+    fn encoder_update(c: encoder_update::Context) {
         // Check encoders
         // - menu_encoder
         let menu_encoder_increment = if let Ok(direction) = c.local.menu_encoder.update() {
