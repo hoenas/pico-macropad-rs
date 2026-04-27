@@ -220,6 +220,12 @@ textarea {
     justify-content: center;
 }
 
+.display-icon-canvas {
+    image-rendering: pixelated;
+    border: 1px solid #444;
+    background: #fff;
+}
+
 button {
     border: none;
     border-radius: 12px;

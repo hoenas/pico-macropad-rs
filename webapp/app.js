@@ -142,7 +142,7 @@ function convertIconImage(img, threshold = 128) {
     }
 
     ctx.putImageData(imageData, 0, 0);
-    return createBmpBlob(20, 20, pixels);
+    return { blob: createBmpBlob(20, 20, pixels), pixels };
 }
 
 function updateIconFromFile() {
@@ -155,7 +155,8 @@ function updateIconFromFile() {
         const image = new Image();
         image.onload = () => {
             const threshold = parseInt(elements.thresholdSlider.value);
-            currentIconBlob = convertIconImage(image, threshold);
+            const iconData = convertIconImage(image, threshold);
+            currentIconBlob = iconData?.blob || null;
             elements.downloadIconBtn.disabled = !currentIconBlob;
         };
         image.src = reader.result;
@@ -197,7 +198,6 @@ function createButtonCard(field) {
         <div class="card">
             <h3>${field.title}</h3>
             ${createTextInput(`${field.id}-text`, 'Display text', 'Label or name')}
-            ${createTextInput(`${field.id}-icon`, 'Display icon (optional)', 'Icon name or empty')}
             <label>
                 Upload icon image
                 <input id="${field.id}-icon-file" class="button-icon-file" type="file" accept="image/*" />
@@ -228,7 +228,6 @@ function createEncoderCard(field) {
         <div class="card">
             <h3>${field.title}</h3>
             ${createTextInput(`${field.id}-text`, 'Display text', 'Label or name')}
-            ${createTextInput(`${field.id}-icon`, 'Display icon (optional)', 'Icon name or empty')}
             ${sections}
             <small>One chord per line. Comma-separated key names.</small>
         </div>
@@ -262,21 +261,20 @@ function buildConfig() {
 
     buttonFields.forEach(field => {
         const text = document.getElementById(`${field.id}-text`).value.trim();
-        const icon = document.getElementById(`${field.id}-icon`).value.trim();
         const keystrokes = parseKeystrokes(document.getElementById(`${field.id}-keystrokes`).value);
+        const iconData = buttonIconBlobs.get(field.id);
         config[field.id] = {
             display_text: text,
-            display_icon: icon === '' ? null : icon,
+            display_icon_pixels: iconData ? Array.from(iconData.pixels) : null,
             keystroke: keystrokes,
         };
     });
 
     encoderFields.forEach(field => {
         const text = document.getElementById(`${field.id}-text`).value.trim();
-        const icon = document.getElementById(`${field.id}-icon`).value.trim();
         const encoderConfig = {
             display_text: text,
-            display_icon: icon === '' ? null : icon,
+            display_icon_pixels: null,
         };
 
         field.types.forEach(type => {
@@ -304,10 +302,41 @@ function updateDisplayPreview(config) {
     html += '<div class="display-buttons">';
     buttonFields.forEach(field => {
         const btn = config[field.id];
-        html += `<div class="display-button">${btn.display_text || ''}</div>`;
+        if (Array.isArray(btn.display_icon_pixels) && btn.display_icon_pixels.length === 400) {
+            html += `<div class="display-button"><canvas class="display-icon-canvas" id="display-preview-${field.id}" width="20" height="20"></canvas></div>`;
+        } else {
+            html += `<div class="display-button">${btn.display_text || ''}</div>`;
+        }
     });
     html += '</div>';
     elements.displayPreview.innerHTML = html;
+    buttonFields.forEach(field => {
+        const btn = config[field.id];
+        if (Array.isArray(btn.display_icon_pixels) && btn.display_icon_pixels.length === 400) {
+            const canvas = document.getElementById(`display-preview-${field.id}`);
+            if (canvas instanceof HTMLCanvasElement) {
+                drawDisplayIcon(canvas, btn.display_icon_pixels);
+            }
+        }
+    });
+}
+
+function drawDisplayIcon(canvas, pixels) {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+        return;
+    }
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.imageSmoothingEnabled = false;
+    for (let y = 0; y < 20; y += 1) {
+        for (let x = 0; x < 20; x += 1) {
+            const pixel = pixels[y * 20 + x];
+            ctx.fillStyle = pixel ? '#000' : '#fff';
+            ctx.fillRect(x, y, 1, 1);
+        }
+    }
+    canvas.style.width = `${canvas.width * 3}px`;
+    canvas.style.height = `${canvas.height * 3}px`;
 }
 
 function validateConfig(config) {
@@ -328,8 +357,18 @@ function validateConfig(config) {
         if (typeof btn.display_text !== 'string') {
             errors.push(`Button ${i + 1}: display_text must be a string.`);
         }
-        if (btn.display_icon !== null && typeof btn.display_icon !== 'string') {
-            errors.push(`Button ${i + 1}: display_icon must be a string or null.`);
+        if (btn.display_icon_pixels != null && !Array.isArray(btn.display_icon_pixels)) {
+            errors.push(`Button ${i + 1}: display_icon_pixels must be an array or null.`);
+        } else if (Array.isArray(btn.display_icon_pixels)) {
+            if (btn.display_icon_pixels.length !== 400) {
+                errors.push(`Button ${i + 1}: display_icon_pixels must have 400 values.`);
+            } else {
+                btn.display_icon_pixels.forEach((value, idx) => {
+                    if (value !== 0 && value !== 1) {
+                        errors.push(`Button ${i + 1}: display_icon_pixels[${idx}] must be 0 or 1.`);
+                    }
+                });
+            }
         }
         if (!Array.isArray(btn.keystroke)) {
             errors.push(`Button ${i + 1}: keystroke must be an array.`);
@@ -356,8 +395,18 @@ function validateConfig(config) {
         if (typeof menuEnc.display_text !== 'string') {
             errors.push('Menu Encoder: display_text must be a string.');
         }
-        if (menuEnc.display_icon !== null && typeof menuEnc.display_icon !== 'string') {
-            errors.push('Menu Encoder: display_icon must be a string or null.');
+        if (menuEnc.display_icon_pixels != null && !Array.isArray(menuEnc.display_icon_pixels)) {
+            errors.push('Menu Encoder: display_icon_pixels must be an array or null.');
+        } else if (Array.isArray(menuEnc.display_icon_pixels)) {
+            if (menuEnc.display_icon_pixels.length !== 400) {
+                errors.push('Menu Encoder: display_icon_pixels must have 400 values.');
+            } else {
+                menuEnc.display_icon_pixels.forEach((value, idx) => {
+                    if (value !== 0 && value !== 1) {
+                        errors.push(`Menu Encoder: display_icon_pixels[${idx}] must be 0 or 1.`);
+                    }
+                });
+            }
         }
         ['keystroke_left', 'keystroke_right'].forEach(dir => {
             if (!Array.isArray(menuEnc[dir])) {
@@ -388,8 +437,18 @@ function validateConfig(config) {
         if (typeof enc.display_text !== 'string') {
             errors.push(`${encName}: display_text must be a string.`);
         }
-        if (enc.display_icon !== null && typeof enc.display_icon !== 'string') {
-            errors.push(`${encName}: display_icon must be a string or null.`);
+        if (enc.display_icon_pixels != null && !Array.isArray(enc.display_icon_pixels)) {
+            errors.push(`${encName}: display_icon_pixels must be an array or null.`);
+        } else if (Array.isArray(enc.display_icon_pixels)) {
+            if (enc.display_icon_pixels.length !== 400) {
+                errors.push(`${encName}: display_icon_pixels must have 400 values.`);
+            } else {
+                enc.display_icon_pixels.forEach((value, idx) => {
+                    if (value !== 0 && value !== 1) {
+                        errors.push(`${encName}: display_icon_pixels[${idx}] must be 0 or 1.`);
+                    }
+                });
+            }
         }
         ['keystroke_left', 'keystroke_right', 'keystroke_push'].forEach(dir => {
             if (!Array.isArray(enc[dir])) {
@@ -473,13 +532,29 @@ function loadJson() {
 }
 
 function loadConfigIntoForm(config) {
+    buttonIconBlobs.clear();
     elements.configName.value = config.name || '';
 
     buttonFields.forEach((field, idx) => {
         const btn = config[field.id];
         if (btn) {
             document.getElementById(`${field.id}-text`).value = btn.display_text || '';
-            document.getElementById(`${field.id}-icon`).value = btn.display_icon || '';
+            if (Array.isArray(btn.display_icon_pixels) && btn.display_icon_pixels.length === 400) {
+                const pixels = Uint8Array.from(btn.display_icon_pixels);
+                const bmpBlob = createBmpBlob(20, 20, pixels);
+                buttonIconBlobs.set(field.id, { blob: bmpBlob, name: `${field.id}.bmp`, pixels });
+                setButtonIconPreview(field.id, bmpBlob);
+                const downloadBtn = document.getElementById(`${field.id}-icon-download`);
+                if (downloadBtn instanceof HTMLButtonElement) {
+                    downloadBtn.disabled = false;
+                }
+            } else {
+                setButtonIconPreview(field.id, null);
+                const downloadBtn = document.getElementById(`${field.id}-icon-download`);
+                if (downloadBtn instanceof HTMLButtonElement) {
+                    downloadBtn.disabled = true;
+                }
+            }
             const keystrokes = btn.keystroke || [];
             const text = keystrokes.map(chord => chord.join(',')).join('\n');
             document.getElementById(`${field.id}-keystrokes`).value = text;
@@ -491,7 +566,6 @@ function loadConfigIntoForm(config) {
         const enc = config[encId];
         if (enc) {
             document.getElementById(`${encId}-text`).value = enc.display_text || '';
-            document.getElementById(`${encId}-icon`).value = enc.display_icon || '';
             const types = encId === 'menu_encoder' ? ['left', 'right'] : ['left', 'right', 'push'];
             types.forEach(type => {
                 const keystrokes = enc[`keystroke_${type}`] || [];
@@ -575,16 +649,16 @@ function updateButtonIconFromFile(buttonId) {
     reader.onload = () => {
         const image = new Image();
         image.onload = () => {
-            const bmpBlob = convertIconImage(image);
+            const iconData = convertIconImage(image);
+            if (!iconData) {
+                return;
+            }
+            const bmpBlob = iconData.blob;
             if (!bmpBlob) {
                 return;
             }
             const fileName = file.name.replace(/\.[^.]+$/, '.bmp');
-            buttonIconBlobs.set(buttonId, { blob: bmpBlob, name: fileName });
-            const iconNameInput = document.getElementById(`${buttonId}-icon`);
-            if (iconNameInput instanceof HTMLInputElement) {
-                iconNameInput.value = fileName;
-            }
+            buttonIconBlobs.set(buttonId, { blob: bmpBlob, name: fileName, pixels: iconData.pixels });
             const downloadBtn = document.getElementById(`${buttonId}-icon-download`);
             if (downloadBtn instanceof HTMLButtonElement) {
                 downloadBtn.disabled = false;
@@ -652,21 +726,18 @@ function loadExampleConfig() {
         const char = String.fromCharCode(65 + idx);
         example[field.id] = {
             display_text: char,
-            display_icon: null,
             keystroke: [[char]],
         };
     });
 
     example.menu_encoder = {
         display_text: 'Vol',
-        display_icon: null,
         keystroke_left: [['VolumeDown']],
         keystroke_right: [['VolumeUp']],
     };
 
     example.encoder1 = {
         display_text: 'Copy/Paste',
-        display_icon: null,
         keystroke_left: [['LeftControl', 'C']],
         keystroke_right: [['LeftControl', 'V']],
         keystroke_push: [['LeftControl', 'V']],
@@ -688,7 +759,6 @@ function loadExampleConfig() {
 
     buttonFields.forEach(field => {
         document.getElementById(`${field.id}-text`).value = example[field.id].display_text;
-        document.getElementById(`${field.id}-icon`).value = '';
         document.getElementById(`${field.id}-keystrokes`).value = example[field.id].keystroke
             .map(chord => chord.join(','))
             .join('\n');
@@ -696,7 +766,6 @@ function loadExampleConfig() {
 
     encoderFields.forEach(field => {
         document.getElementById(`${field.id}-text`).value = example[field.id].display_text;
-        document.getElementById(`${field.id}-icon`).value = '';
         field.types.forEach(type => {
             document.getElementById(`${field.id}-${type}-keystrokes`).value = example[field.id][`keystroke_${type}`]
                 .map(chord => chord.join(','))

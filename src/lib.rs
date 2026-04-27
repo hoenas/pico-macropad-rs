@@ -33,8 +33,6 @@ pub struct MacroConfig {
 #[derive(serde::Deserialize, serde::Serialize, Clone, Default)]
 pub struct ButtonConfig {
     pub display_text: String,
-    pub display_icon: Option<String>,
-    #[serde(skip, default)]
     pub display_icon_pixels: Option<Vec<u8>>,
     pub keystroke: Vec<Vec<KeyboardCode>>,
 }
@@ -229,8 +227,6 @@ impl KeyboardCode {
 #[derive(serde::Deserialize, serde::Serialize, Clone, Default)]
 pub struct EncoderConfig {
     pub display_text: String,
-    pub display_icon: Option<String>,
-    #[serde(skip, default)]
     pub display_icon_pixels: Option<Vec<u8>>,
     pub keystroke_left: Vec<Vec<KeyboardCode>>,
     pub keystroke_right: Vec<Vec<KeyboardCode>>,
@@ -240,8 +236,6 @@ pub struct EncoderConfig {
 #[derive(serde::Deserialize, serde::Serialize, Clone, Default)]
 pub struct MenuEncoderConfig {
     pub display_text: String,
-    pub display_icon: Option<String>,
-    #[serde(skip, default)]
     pub display_icon_pixels: Option<Vec<u8>>,
     pub keystroke_left: Vec<Vec<KeyboardCode>>,
     pub keystroke_right: Vec<Vec<KeyboardCode>>,
