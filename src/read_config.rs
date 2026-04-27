@@ -1,10 +1,12 @@
-use alloc::string::String;
+use alloc::{borrow::ToOwned, string::String};
 use anyhow::Error;
+use embedded_graphics::pixelcolor::Rgb888;
 use embedded_sdmmc::{BlockDevice, Directory, ShortFileName, TimeSource};
 
 use crate::MacroConfig;
 
 const LAST_CONFIG_FILE_NAME: &str = "lastcfg";
+const ICON_DIRECTORY: &str = "icons";
 const FILE_READ_BUFFER_SIZE: usize = 4096;
 
 pub fn read_file(
@@ -88,4 +90,15 @@ pub fn write_example_config_file(
         .unwrap();
     let config_json = serde_json::to_string(&example_config).unwrap();
     opened_file.write(config_json.as_bytes()).unwrap();
+}
+
+pub fn read_icon(
+    root_dir: &Directory<'_, impl BlockDevice, impl TimeSource, 4, 4, 1>,
+    icon_name: &str,
+) -> Result<alloc::vec::Vec<u8>, Error> {
+    let icon_dir = root_dir
+        .open_dir(ICON_DIRECTORY)
+        .map_err(|_| Error::msg("Failed to open icon directory"))?;
+    let (bytes_read, buffer) = read_file(&icon_dir, icon_name)?;
+    Ok(buffer[..bytes_read].to_vec())
 }

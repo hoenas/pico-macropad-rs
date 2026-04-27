@@ -226,6 +226,7 @@ impl KeyboardCode {
 #[derive(serde::Deserialize, serde::Serialize, Clone, Default)]
 pub struct EncoderConfig {
     pub display_text: String,
+    pub display_icon: Option<String>,
     pub keystroke_left: Vec<Vec<KeyboardCode>>,
     pub keystroke_right: Vec<Vec<KeyboardCode>>,
     pub keystroke_push: Vec<Vec<KeyboardCode>>,
@@ -234,6 +235,7 @@ pub struct EncoderConfig {
 #[derive(serde::Deserialize, serde::Serialize, Clone, Default)]
 pub struct MenuEncoderConfig {
     pub display_text: String,
+    pub display_icon: Option<String>,
     pub keystroke_left: Vec<Vec<KeyboardCode>>,
     pub keystroke_right: Vec<Vec<KeyboardCode>>,
 }
