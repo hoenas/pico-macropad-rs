@@ -256,3 +256,70 @@ button.secondary {
         flex-direction: column;
     }
 }
+
+.file-list {
+    margin-bottom: 16px;
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid #333;
+    padding: 8px;
+    background: #111;
+}
+
+.file-list p {
+    margin: 0;
+    color: #999;
+}
+
+.file-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.file-item input[type="radio"] {
+    margin-right: 8px;
+}
+
+.download-btn {
+    margin-left: auto;
+    padding: 4px 8px;
+    font-size: 0.8rem;
+}
+
+.file-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: end;
+}
+
+.file-actions label {
+    margin-bottom: 0;
+}
+
+#save-filename {
+    width: 120px;
+}
+
+#feedback {
+    padding: 8px;
+    border-radius: 4px;
+    margin-bottom: 10px;
+    font-weight: bold;
+}
+
+.feedback.success {
+    background: #2d5a2d;
+    color: #aaffaa;
+}
+
+.feedback.error {
+    background: #5a2d2d;
+    color: #ffaaaa;
+}
+
+.feedback.info {
+    background: #2d2d5a;
+    color: #aaaaff;
+}

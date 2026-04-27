@@ -28,6 +28,7 @@ const elements = {
     validationErrors: document.getElementById('validation-errors'),
     loadJsonFile: document.getElementById('load-json-file'),
     loadJsonBtn: document.getElementById('load-json-btn'),
+    feedback: document.getElementById('feedback'),
 };
 
 const buttonIconBlobs = new Map();
@@ -426,6 +427,48 @@ function validateConfig(config) {
     return errors;
 }
 
+function showFeedback(message, type = 'info') {
+    elements.feedback.textContent = message;
+    elements.feedback.className = 'feedback ' + type;
+    setTimeout(() => {
+        elements.feedback.textContent = '';
+        elements.feedback.className = 'feedback';
+    }, 3000);
+}
+
+function downloadJson() {
+    const content = elements.outputJson.value;
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const filename = sanitizeFilename(elements.configName.value.trim() || 'macro_config');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+    showFeedback(`CFG saved as ${filename}`, 'success');
+}
+
+function loadJson() {
+    const file = elements.loadJsonFile.files[0];
+    if (!file) {
+        showFeedback('Please select a CFG file first.', 'error');
+        return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+        try {
+            const config = JSON.parse(reader.result);
+            loadConfigIntoForm(config);
+            updateOutput();
+            showFeedback(`CFG loaded: ${file.name}`, 'success');
+        } catch (e) {
+            showFeedback('Invalid CFG file: ' + e.message, 'error');
+        }
+    };
+    reader.readAsText(file);
+}
+
 function loadConfigIntoForm(config) {
     elements.configName.value = config.name || '';
 
@@ -671,11 +714,11 @@ loadExampleConfig();
 
 elements.updateJsonBtn.addEventListener('click', updateOutput);
 elements.copyJsonBtn.addEventListener('click', copyJson);
-elements.downloadJsonBtn.addEventListener('click', downloadJson);
 elements.convertIconBtn.addEventListener('click', updateIconFromFile);
 elements.downloadIconBtn.addEventListener('click', downloadIcon);
 elements.loadExampleBtn.addEventListener('click', loadExampleConfig);
 elements.loadJsonBtn.addEventListener('click', loadJson);
+elements.downloadJsonBtn.addEventListener('click', downloadJson);
 
 document.addEventListener('change', event => {
     const target = event.target;
