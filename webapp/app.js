@@ -471,7 +471,7 @@ function loadConfigIntoForm(config) {
 function loadJson() {
     const file = elements.loadJsonFile.files[0];
     if (!file) {
-        alert('Please select a JSON file first.');
+        alert('Please select a CFG file first.');
         return;
     }
     const reader = new FileReader();
@@ -481,7 +481,7 @@ function loadJson() {
             loadConfigIntoForm(config);
             updateOutput();
         } catch (e) {
-            alert('Invalid JSON file: ' + e.message);
+            alert('Invalid CFG file: ' + e.message);
         }
     };
     reader.readAsText(file);
@@ -574,7 +574,7 @@ function sanitizeFilename(name) {
 
 function downloadJson() {
     const content = elements.outputJson.value;
-    const blob = new Blob([content], { type: 'application/json' });
+    const blob = new Blob([content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     const filename = sanitizeFilename(elements.configName.value.trim() || 'macro_config');
@@ -586,7 +586,7 @@ function downloadJson() {
 
 function copyJson() {
     navigator.clipboard.writeText(elements.outputJson.value).then(() => {
-        alert('JSON copied to clipboard');
+        alert('CFG copied to clipboard');
     });
 }
 
