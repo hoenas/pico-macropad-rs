@@ -15,12 +15,40 @@
             <p>Create a `MacroConfig` for your Pico macro pad and export it as JSON.</p>
         </header>
 
+        <section class="panel panel-overview">
+            <h2>Panel Overview</h2>
+            <img src="panel_overview.png" alt="Panel Overview" id="panel-overview" />
+        </section>
+
+        <section class="panel display-preview-panel">
+            <h2>Display Preview</h2>
+            <div id="display-preview"></div>
+        </section>
+
         <section class="panel">
             <h2>General</h2>
             <label>
                 Config name
                 <input id="config-name" type="text" value="example" />
             </label>
+        </section>
+
+        <section class="panel" id="icon-panel">
+            <h2>Icon converter</h2>
+            <label>
+                Upload an icon image
+                <input id="icon-file" type="file" accept="image/*" />
+            </label>
+            <div class="icon-converter-controls">
+                <button id="convert-icon" type="button">Convert icon</button>
+                <button id="download-icon" type="button" disabled>Download BMP</button>
+            </div>
+            <div class="icon-preview">
+                <canvas id="icon-canvas" width="20" height="20"></canvas>
+                <div class="icon-preview-label">20×20 B&amp;W preview</div>
+            </div>
+            <p class="small-note">The uploaded image will be resized to 20×20 pixels and converted to black and white
+                BMP format.</p>
         </section>
 
         <section class="panel" id="buttons-panel">

@@ -2,7 +2,7 @@ const KEY_CODES = [
     "NoEventIndicated", "ErrorRollOver", "POSTFail", "ErrorUndefine", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "Keyboard1", "Keyboard2", "Keyboard3", "Keyboard4", "Keyboard5", "Keyboard6", "Keyboard7", "Keyboard8", "Keyboard9", "Keyboard0", "ReturnEnter", "Escape", "DeleteBackspace", "Tab", "Space", "Minus", "Equal", "LeftBrace", "RightBrace", "Backslash", "NonUSHash", "Semicolon", "Apostrophe", "Grave", "Comma", "Dot", "ForwardSlash", "CapsLock", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12", "PrintScreen", "ScrollLock", "Pause", "Insert", "Home", "PageUp", "DeleteForward", "End", "PageDown", "RightArrow", "LeftArrow", "DownArrow", "UpArrow", "KeypadNumLockAndClear", "KeypadDivide", "KeypadMultiply", "KeypadSubtract", "KeypadAdd", "KeypadEnter", "Keypad1", "Keypad2", "Keypad3", "Keypad4", "Keypad5", "Keypad6", "Keypad7", "Keypad8", "Keypad9", "Keypad0", "KeypadDot", "NonUSBackslash", "Application", "Power", "KeypadEqual", "F13", "F14", "F15", "F16", "F17", "F18", "F19", "F20", "F21", "F22", "F23", "F24", "Execute", "Help", "Menu", "Select", "Stop", "Again", "Undo", "Cut", "Copy", "Paste", "Find", "Mute", "VolumeUp", "VolumeDown", "LockingCapsLock", "LockingNumLock", "LockingScrollLock", "KeypadComma", "KeypadEqualSign", "Kanji1", "Kanji2", "Kanji3", "Kanji4", "Kanji5", "Kanji6", "Kanji7", "Kanji8", "Kanji9", "LANG1", "LANG2", "LANG3", "LANG4", "LANG5", "LANG6", "LANG7", "LANG8", "LANG9", "AlternateErase", "SysReqAttention", "Cancel", "Clear", "Prior", "Return", "Separator", "Out", "Oper", "ClearAgain", "CrSelProps", "ExSel", "LeftControl", "LeftShift", "LeftAlt", "LeftGUI", "RightControl", "RightShift", "RightAlt", "RightGUI"
 ];
 
-const buttonFields = Array.from({ length: 10 }, (_, idx) => ({ id: `button${idx}`, title: `Button ${idx}` }));
+const buttonFields = Array.from({ length: 10 }, (_, idx) => ({ id: `button${idx}`, title: `Button ${idx + 1}` }));
 const encoderFields = [
     { id: 'menu_encoder', title: 'Menu Encoder', types: ['left', 'right'] },
     { id: 'encoder1', title: 'Encoder 1', types: ['left', 'right', 'push'] },
@@ -20,7 +20,153 @@ const elements = {
     downloadJsonBtn: document.getElementById('download-json'),
     loadExampleBtn: document.getElementById('load-example'),
     keycodeList: document.getElementById('keycode-list'),
+    iconFile: document.getElementById('icon-file'),
+    convertIconBtn: document.getElementById('convert-icon'),
+    downloadIconBtn: document.getElementById('download-icon'),
+    iconCanvas: document.getElementById('icon-canvas'),
+    displayPreview: document.getElementById('display-preview'),
 };
+
+const buttonIconBlobs = new Map();
+
+let currentIconBlob = null;
+
+function createBmpBlob(width, height, pixels) {
+    const rowBytes = Math.ceil(width / 32) * 4;
+    const pixelDataSize = rowBytes * height;
+    const headerSize = 14 + 40 + 8;
+    const buffer = new ArrayBuffer(headerSize + pixelDataSize);
+    const view = new DataView(buffer);
+    let offset = 0;
+
+    view.setUint8(offset++, 0x42);
+    view.setUint8(offset++, 0x4d);
+    view.setUint32(offset, headerSize + pixelDataSize, true);
+    offset += 4;
+    view.setUint16(offset, 0, true);
+    offset += 2;
+    view.setUint16(offset, 0, true);
+    offset += 2;
+    view.setUint32(offset, headerSize, true);
+    offset += 4;
+
+    view.setUint32(offset, 40, true);
+    offset += 4;
+    view.setInt32(offset, width, true);
+    offset += 4;
+    view.setInt32(offset, height, true);
+    offset += 4;
+    view.setUint16(offset, 1, true);
+    offset += 2;
+    view.setUint16(offset, 1, true);
+    offset += 2;
+    view.setUint32(offset, 0, true);
+    offset += 4;
+    view.setUint32(offset, pixelDataSize, true);
+    offset += 4;
+    view.setInt32(offset, 2835, true);
+    offset += 4;
+    view.setInt32(offset, 2835, true);
+    offset += 4;
+    view.setUint32(offset, 2, true);
+    offset += 4;
+    view.setUint32(offset, 0, true);
+    offset += 4;
+
+    view.setUint8(offset++, 0x00);
+    view.setUint8(offset++, 0x00);
+    view.setUint8(offset++, 0x00);
+    view.setUint8(offset++, 0x00);
+    view.setUint8(offset++, 0xff);
+    view.setUint8(offset++, 0xff);
+    view.setUint8(offset++, 0xff);
+    view.setUint8(offset++, 0x00);
+
+    const pixelOffset = headerSize;
+    for (let row = height - 1; row >= 0; row -= 1) {
+        let byte = 0;
+        let bitPos = 7;
+        let outOffset = pixelOffset + (height - 1 - row) * rowBytes;
+
+        for (let x = 0; x < width; x += 1) {
+            if (pixels[row * width + x]) {
+                byte |= 1 << bitPos;
+            }
+            bitPos -= 1;
+            if (bitPos < 0) {
+                view.setUint8(outOffset++, byte);
+                byte = 0;
+                bitPos = 7;
+            }
+        }
+
+        if (bitPos !== 7) {
+            view.setUint8(outOffset++, byte);
+        }
+
+        while (outOffset < pixelOffset + (height - 1 - row) * rowBytes + rowBytes) {
+            view.setUint8(outOffset++, 0);
+        }
+    }
+
+    return new Blob([buffer], { type: 'image/bmp' });
+}
+
+function convertIconImage(img) {
+    const ctx = elements.iconCanvas.getContext('2d');
+    if (!ctx) {
+        return null;
+    }
+    ctx.clearRect(0, 0, 20, 20);
+    ctx.drawImage(img, 0, 0, 20, 20);
+    const imageData = ctx.getImageData(0, 0, 20, 20);
+    const pixels = new Uint8Array(20 * 20);
+    const data = imageData.data;
+
+    for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+        const value = gray >= 128 ? 255 : 0;
+        data[i] = value;
+        data[i + 1] = value;
+        data[i + 2] = value;
+        pixels[i / 4] = gray >= 128 ? 1 : 0;
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+    return createBmpBlob(20, 20, pixels);
+}
+
+function updateIconFromFile() {
+    const file = elements.iconFile.files?.[0];
+    if (!file) {
+        return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+        const image = new Image();
+        image.onload = () => {
+            currentIconBlob = convertIconImage(image);
+            elements.downloadIconBtn.disabled = !currentIconBlob;
+        };
+        image.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+}
+
+function downloadIcon() {
+    if (!currentIconBlob) {
+        return;
+    }
+    const url = URL.createObjectURL(currentIconBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'icon.bmp';
+    a.click();
+    URL.revokeObjectURL(url);
+}
 
 function createTextInput(id, labelText, placeholder = '') {
     return `
@@ -45,6 +191,14 @@ function createButtonCard(field) {
             <h3>${field.title}</h3>
             ${createTextInput(`${field.id}-text`, 'Display text', 'Label or name')}
             ${createTextInput(`${field.id}-icon`, 'Display icon (optional)', 'Icon name or empty')}
+            <label>
+                Upload icon image
+                <input id="${field.id}-icon-file" class="button-icon-file" type="file" accept="image/*" />
+            </label>
+            <div class="button-icon-row">
+                <canvas id="${field.id}-icon-preview" class="button-icon-preview" width="20" height="20"></canvas>
+                <button id="${field.id}-icon-download" class="icon-download" type="button" disabled>Download icon BMP</button>
+            </div>
             <label for="${field.id}-keystrokes">
                 Keystrokes
                 <textarea id="${field.id}-keystrokes" rows="5" placeholder="A\nLeftControl,C"></textarea>
@@ -138,9 +292,86 @@ function buildConfig() {
     return config;
 }
 
+function updateDisplayPreview(config) {
+    let html = `<div class="display-name">${config.name}</div>`;
+    html += '<div class="display-buttons">';
+    buttonFields.forEach(field => {
+        const btn = config[field.id];
+        html += `<div class="display-button">${btn.display_text || ''}</div>`;
+    });
+    html += '</div>';
+    elements.displayPreview.innerHTML = html;
+}
+
 function updateOutput() {
     const config = buildConfig();
     elements.outputJson.value = JSON.stringify(config, null, 4);
+    updateDisplayPreview(config);
+}
+
+function setButtonIconPreview(buttonId, blob) {
+    const preview = document.getElementById(`${buttonId}-icon-preview`);
+    if (!(preview instanceof HTMLCanvasElement)) {
+        return;
+    }
+    const ctx = preview.getContext('2d');
+    if (!ctx) {
+        return;
+    }
+    ctx.clearRect(0, 0, preview.width, preview.height);
+    if (!blob) {
+        return;
+    }
+    const img = new Image();
+    img.onload = () => {
+        ctx.drawImage(img, 0, 0, preview.width, preview.height);
+    };
+    img.src = URL.createObjectURL(blob);
+}
+
+function updateButtonIconFromFile(buttonId) {
+    const input = document.getElementById(`${buttonId}-icon-file`);
+    if (!(input instanceof HTMLInputElement) || !input.files?.[0]) {
+        return;
+    }
+    const file = input.files[0];
+    const reader = new FileReader();
+    reader.onload = () => {
+        const image = new Image();
+        image.onload = () => {
+            const bmpBlob = convertIconImage(image);
+            if (!bmpBlob) {
+                return;
+            }
+            const fileName = file.name.replace(/\.[^.]+$/, '.bmp');
+            buttonIconBlobs.set(buttonId, { blob: bmpBlob, name: fileName });
+            const iconNameInput = document.getElementById(`${buttonId}-icon`);
+            if (iconNameInput instanceof HTMLInputElement) {
+                iconNameInput.value = fileName;
+            }
+            const downloadBtn = document.getElementById(`${buttonId}-icon-download`);
+            if (downloadBtn instanceof HTMLButtonElement) {
+                downloadBtn.disabled = false;
+            }
+            setButtonIconPreview(buttonId, bmpBlob);
+            updateOutput();
+        };
+        image.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+}
+
+function downloadButtonIcon(buttonId) {
+    const icon = buttonIconBlobs.get(buttonId);
+    if (!icon) {
+        return;
+    }
+    const url = URL.createObjectURL(icon.blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = icon.name;
+    a.click();
+    URL.revokeObjectURL(url);
 }
 
 function downloadJson() {
@@ -242,8 +473,33 @@ loadExampleConfig();
 elements.updateJsonBtn.addEventListener('click', updateOutput);
 elements.copyJsonBtn.addEventListener('click', copyJson);
 elements.downloadJsonBtn.addEventListener('click', downloadJson);
+elements.convertIconBtn.addEventListener('click', updateIconFromFile);
+elements.downloadIconBtn.addEventListener('click', downloadIcon);
 elements.loadExampleBtn.addEventListener('click', loadExampleConfig);
+
+document.addEventListener('change', event => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) {
+        return;
+    }
+    if (target.classList.contains('button-icon-file')) {
+        const buttonId = target.id.replace(/-icon-file$/, '');
+        updateButtonIconFromFile(buttonId);
+    }
+});
+
+document.addEventListener('click', event => {
+    const target = event.target;
+    if (!(target instanceof HTMLButtonElement)) {
+        return;
+    }
+    if (target.classList.contains('icon-download')) {
+        const buttonId = target.id.replace(/-icon-download$/, '');
+        downloadButtonIcon(buttonId);
+    }
+});
 
 [...document.querySelectorAll('input, textarea')].forEach(el => {
     el.addEventListener('input', updateOutput);
 });
+elements.iconFile.addEventListener('change', updateIconFromFile);

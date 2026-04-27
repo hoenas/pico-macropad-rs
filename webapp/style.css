@@ -70,11 +70,12 @@ textarea {
 }
 
 .buttons-grid {
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    grid-template-columns: repeat(5, 1fr);
+    grid-template-rows: repeat(2, 1fr);
 }
 
 .encoders-grid {
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    grid-template-columns: repeat(3, 1fr);
 }
 
 .leds-grid {
@@ -108,6 +109,97 @@ textarea {
     display: flex;
     flex-wrap: wrap;
     gap: 12px;
+}
+
+.icon-converter-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.icon-preview {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+#icon-canvas {
+    width: 120px;
+    height: 120px;
+    border: 1px solid #333;
+    background: #fff;
+    image-rendering: pixelated;
+}
+
+.icon-preview-label {
+    font-size: 0.95rem;
+    color: #b0b0b0;
+}
+
+.button-icon-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+.button-icon-preview {
+    width: 60px;
+    height: 60px;
+    border: 1px solid #333;
+    background: #fff;
+    image-rendering: pixelated;
+}
+
+.icon-download {
+    padding: 8px 12px;
+    font-size: 0.95rem;
+}
+
+.panel-overview img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 0 auto;
+}
+
+.display-preview-panel #display-preview {
+    background: #000;
+    color: #fff;
+    padding: 20px;
+    border-radius: 10px;
+    font-family: monospace;
+    min-height: 100px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.display-name {
+    font-size: 1.2rem;
+    margin-bottom: 10px;
+}
+
+.display-buttons {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 5px;
+    width: 100%;
+}
+
+.display-button {
+    background: #333;
+    padding: 5px;
+    text-align: center;
+    border-radius: 5px;
+    min-height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 button {
