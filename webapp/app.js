@@ -29,6 +29,8 @@ const elements = {
     loadJsonFile: document.getElementById('load-json-file'),
     loadJsonBtn: document.getElementById('load-json-btn'),
     feedback: document.getElementById('feedback'),
+    thresholdSlider: document.getElementById('threshold-slider'),
+    thresholdValue: document.getElementById('threshold-value'),
 };
 
 const buttonIconBlobs = new Map();
@@ -116,7 +118,7 @@ function createBmpBlob(width, height, pixels) {
     return new Blob([buffer], { type: 'image/bmp' });
 }
 
-function convertIconImage(img) {
+function convertIconImage(img, threshold = 128) {
     const ctx = elements.iconCanvas.getContext('2d');
     if (!ctx) {
         return null;
@@ -132,11 +134,11 @@ function convertIconImage(img) {
         const g = data[i + 1];
         const b = data[i + 2];
         const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-        const value = gray >= 128 ? 255 : 0;
+        const value = gray >= threshold ? 255 : 0;
         data[i] = value;
         data[i + 1] = value;
         data[i + 2] = value;
-        pixels[i / 4] = gray >= 128 ? 1 : 0;
+        pixels[i / 4] = gray >= threshold ? 1 : 0;
     }
 
     ctx.putImageData(imageData, 0, 0);
@@ -152,7 +154,8 @@ function updateIconFromFile() {
     reader.onload = () => {
         const image = new Image();
         image.onload = () => {
-            currentIconBlob = convertIconImage(image);
+            const threshold = parseInt(elements.thresholdSlider.value);
+            currentIconBlob = convertIconImage(image, threshold);
             elements.downloadIconBtn.disabled = !currentIconBlob;
         };
         image.src = reader.result;
@@ -719,6 +722,12 @@ elements.downloadIconBtn.addEventListener('click', downloadIcon);
 elements.loadExampleBtn.addEventListener('click', loadExampleConfig);
 elements.loadJsonBtn.addEventListener('click', loadJson);
 elements.downloadJsonBtn.addEventListener('click', downloadJson);
+elements.thresholdSlider.addEventListener('input', () => {
+    elements.thresholdValue.textContent = elements.thresholdSlider.value;
+    if (elements.iconFile.files?.[0]) {
+        updateIconFromFile();
+    }
+});
 
 document.addEventListener('change', event => {
     const target = event.target;
