@@ -15,6 +15,20 @@
             <p>Create a `MacroConfig` for your Pico macro pad and export it as JSON.</p>
         </header>
 
+        <section class="panel actions-panel">
+            <div id="validation-errors"></div>
+            <div id="feedback"></div>
+            <label>
+                Load CFG config
+                <input id="load-json-file" type="file" accept=".cfg" />
+            </label>
+            <button id="load-json-btn">Load CFG</button>
+            <button id="update-json">Update CFG</button>
+            <button id="copy-json">Copy CFG</button>
+            <button id="download-json">Save CFG</button>
+            <button id="load-example">Load Example</button>
+        </section>
+
         <section class="panel panel-overview">
             <h2>Panel Overview</h2>
             <img src="panel_overview.png" alt="Panel Overview" id="panel-overview" />
@@ -64,20 +78,6 @@
         <section class="panel" id="leds-panel">
             <h2>LED colors</h2>
             <div class="grid leds-grid" id="leds-grid"></div>
-        </section>
-
-        <section class="panel actions-panel">
-            <div id="validation-errors"></div>
-            <div id="feedback"></div>
-            <label>
-                Load CFG config
-                <input id="load-json-file" type="file" accept=".cfg" />
-            </label>
-            <button id="load-json-btn">Load CFG</button>
-            <button id="update-json">Update CFG</button>
-            <button id="copy-json">Copy CFG</button>
-            <button id="download-json">Save CFG</button>
-            <button id="load-example">Load Example</button>
         </section>
 
         <section class="panel output-panel">
