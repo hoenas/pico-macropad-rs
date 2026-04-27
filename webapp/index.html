@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MacroConfig Visual Builder</title>
+    <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+    <main>
+        <header>
+            <h1>MacroConfig Visual Builder</h1>
+            <p>Create a `MacroConfig` for your Pico macro pad and export it as JSON.</p>
+        </header>
+
+        <section class="panel">
+            <h2>General</h2>
+            <label>
+                Config name
+                <input id="config-name" type="text" value="example" />
+            </label>
+        </section>
+
+        <section class="panel" id="buttons-panel">
+            <h2>Buttons</h2>
+            <div class="grid buttons-grid" id="buttons-grid"></div>
+        </section>
+
+        <section class="panel" id="encoders-panel">
+            <h2>Encoders</h2>
+            <div class="grid encoders-grid" id="encoders-grid"></div>
+        </section>
+
+        <section class="panel" id="leds-panel">
+            <h2>LED colors</h2>
+            <div class="grid leds-grid" id="leds-grid"></div>
+        </section>
+
+        <section class="panel actions-panel">
+            <button id="update-json">Update JSON</button>
+            <button id="copy-json">Copy JSON</button>
+            <button id="download-json">Download JSON</button>
+            <button id="load-example">Load Example</button>
+        </section>
+
+        <section class="panel output-panel">
+            <h2>Generated JSON</h2>
+            <textarea id="output-json" readonly></textarea>
+        </section>
+
+        <section class="panel help-panel">
+            <h2>Keystroke format</h2>
+            <p>Use one line per chord. Separate multiple keys with commas. Example:</p>
+            <pre>LeftControl,C
+Alt,Tab
+A</pre>
+            <p>Select from the keyboard code suggestions or type one of the variant names.</p>
+            <details>
+                <summary>All supported key codes</summary>
+                <pre id="keycode-list"></pre>
+            </details>
+        </section>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
