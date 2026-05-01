@@ -31,6 +31,7 @@ const elements = {
     feedback: document.getElementById('feedback'),
     thresholdSlider: document.getElementById('threshold-slider'),
     thresholdValue: document.getElementById('threshold-value'),
+    invertIcon: document.getElementById('invert-icon'),
 };
 
 const buttonIconBlobs = new Map();
@@ -118,7 +119,7 @@ function createBmpBlob(width, height, pixels) {
     return new Blob([buffer], { type: 'image/bmp' });
 }
 
-function convertIconImage(img, threshold = 128) {
+function convertIconImage(img, threshold = 128, invert = false) {
     const ctx = elements.iconCanvas.getContext('2d');
     if (!ctx) {
         return null;
@@ -134,11 +135,15 @@ function convertIconImage(img, threshold = 128) {
         const g = data[i + 1];
         const b = data[i + 2];
         const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-        const value = gray >= threshold ? 255 : 0;
+        let pixel = gray >= threshold ? 1 : 0;
+        if (invert) {
+            pixel = 1 - pixel;
+        }
+        const value = pixel ? 255 : 0;
         data[i] = value;
         data[i + 1] = value;
         data[i + 2] = value;
-        pixels[i / 4] = gray >= threshold ? 1 : 0;
+        pixels[i / 4] = pixel;
     }
 
     ctx.putImageData(imageData, 0, 0);
@@ -155,7 +160,8 @@ function updateIconFromFile() {
         const image = new Image();
         image.onload = () => {
             const threshold = parseInt(elements.thresholdSlider.value);
-            const iconData = convertIconImage(image, threshold);
+            const invert = elements.invertIcon.checked;
+            const iconData = convertIconImage(image, threshold, invert);
             currentIconBlob = iconData?.blob || null;
             elements.downloadIconBtn.disabled = !currentIconBlob;
         };
@@ -649,7 +655,7 @@ function updateButtonIconFromFile(buttonId) {
     reader.onload = () => {
         const image = new Image();
         image.onload = () => {
-            const iconData = convertIconImage(image);
+            const iconData = convertIconImage(image, 128, false);
             if (!iconData) {
                 return;
             }
@@ -793,6 +799,12 @@ elements.loadJsonBtn.addEventListener('click', loadJson);
 elements.downloadJsonBtn.addEventListener('click', downloadJson);
 elements.thresholdSlider.addEventListener('input', () => {
     elements.thresholdValue.textContent = elements.thresholdSlider.value;
+    if (elements.iconFile.files?.[0]) {
+        updateIconFromFile();
+    }
+});
+
+elements.invertIcon.addEventListener('change', () => {
     if (elements.iconFile.files?.[0]) {
         updateIconFromFile();
     }
