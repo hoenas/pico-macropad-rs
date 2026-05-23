@@ -33,8 +33,8 @@ pub struct MacroConfig {
 #[derive(serde::Deserialize, serde::Serialize, Clone, Default)]
 pub struct ButtonConfig {
     pub display_text: String,
-    pub display_icon_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_icon_pixels: Option<Vec<u8>>,
     pub keystroke: Vec<Vec<KeyboardCode>>,
 }
 
