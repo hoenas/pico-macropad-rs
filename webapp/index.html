@@ -4,38 +4,37 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>MacroConfig Visual Builder</title>
+    <title>MacroConfig Editor</title>
     <link rel="stylesheet" href="style.css" />
 </head>
 
 <body>
     <main>
         <header>
-            <h1>MacroConfig Visual Builder</h1>
-            <p>Create a `MacroConfig` for your Pico macro pad and export it as JSON.</p>
+            <h1>MacroConfig Editor</h1>
+            <p>Create, load and export a complete MacroConfig package with icon files for the Pico macro pad.</p>
         </header>
 
         <section class="panel actions-panel">
+            <div class="file-actions">
+                <label>
+                    Load config
+                    <input id="load-cfg-file" type="file" accept=".cfg" />
+                </label>
+                <button id="load-cfg-btn">Load</button>
+                <button id="load-example">Example</button>
+            </div>
+            <div class="file-actions">
+                <button id="update-btn">Refresh</button>
+                <button id="download-cfg">Download CFG</button>
+                <button id="download-package">Download package</button>
+            </div>
             <div id="validation-errors"></div>
             <div id="feedback"></div>
-            <label>
-                Load CFG config
-                <input id="load-json-file" type="file" accept=".cfg" />
-            </label>
-            <button id="load-json-btn">Load CFG</button>
-            <button id="update-json">Update CFG</button>
-            <button id="copy-json">Copy CFG</button>
-            <button id="download-json">Save CFG</button>
-            <button id="load-example">Load Example</button>
-        </section>
-
-        <section class="panel panel-overview">
-            <h2>Panel Overview</h2>
-            <img src="panel_overview.png" alt="Panel Overview" id="panel-overview" />
         </section>
 
         <section class="panel display-preview-panel">
-            <h2>Display Preview</h2>
+            <h2>Display preview</h2>
             <div id="display-preview"></div>
         </section>
 
@@ -45,31 +44,6 @@
                 Config name
                 <input id="config-name" type="text" value="example" />
             </label>
-        </section>
-
-        <section class="panel" id="icon-panel">
-            <h2>Icon converter</h2>
-            <label>
-                Upload an icon image
-                <input id="icon-file" type="file" accept="image/*" />
-            </label>
-            <label>
-                B&amp;W threshold: <span id="threshold-value">128</span>
-                <input id="threshold-slider" type="range" min="0" max="255" value="128" />
-            </label>
-            <label>
-                <input id="invert-icon" type="checkbox" /> Invert icon
-            </label>
-            <div class="icon-converter-controls">
-                <button id="convert-icon" type="button">Convert icon</button>
-                <button id="download-icon" type="button" disabled>Download BMP</button>
-            </div>
-            <div class="icon-preview">
-                <canvas id="icon-canvas" width="20" height="20"></canvas>
-                <div class="icon-preview-label">20×20 B&amp;W preview</div>
-            </div>
-            <p class="small-note">The uploaded image will be resized to 20×20 pixels and converted to black and white
-                BMP format.</p>
         </section>
 
         <section class="panel" id="buttons-panel">
@@ -89,16 +63,15 @@
 
         <section class="panel output-panel">
             <h2>Generated CFG</h2>
-            <textarea id="output-json" readonly></textarea>
+            <textarea id="output-cbor" readonly></textarea>
         </section>
 
         <section class="panel help-panel">
             <h2>Keystroke format</h2>
-            <p>Use one line per chord. Separate multiple keys with commas. Example:</p>
+            <p>Use one line per chord. Separate multiple keys with commas.</p>
             <pre>LeftControl,C
 Alt,Tab
 A</pre>
-            <p>Select from the keyboard code suggestions or type one of the variant names.</p>
             <details>
                 <summary>All supported key codes</summary>
                 <pre id="keycode-list"></pre>

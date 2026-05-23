@@ -14,29 +14,285 @@ const elements = {
     buttonsGrid: document.getElementById('buttons-grid'),
     encodersGrid: document.getElementById('encoders-grid'),
     ledsGrid: document.getElementById('leds-grid'),
-    outputJson: document.getElementById('output-json'),
-    updateJsonBtn: document.getElementById('update-json'),
-    copyJsonBtn: document.getElementById('copy-json'),
-    downloadJsonBtn: document.getElementById('download-json'),
+    outputCbor: document.getElementById('output-cbor'),
+    updateBtn: document.getElementById('update-btn'),
+    downloadCfgBtn: document.getElementById('download-cfg'),
+    downloadPackageBtn: document.getElementById('download-package'),
     loadExampleBtn: document.getElementById('load-example'),
     keycodeList: document.getElementById('keycode-list'),
-    iconFile: document.getElementById('icon-file'),
-    convertIconBtn: document.getElementById('convert-icon'),
-    downloadIconBtn: document.getElementById('download-icon'),
-    iconCanvas: document.getElementById('icon-canvas'),
     displayPreview: document.getElementById('display-preview'),
     validationErrors: document.getElementById('validation-errors'),
-    loadJsonFile: document.getElementById('load-json-file'),
-    loadJsonBtn: document.getElementById('load-json-btn'),
     feedback: document.getElementById('feedback'),
-    thresholdSlider: document.getElementById('threshold-slider'),
-    thresholdValue: document.getElementById('threshold-value'),
-    invertIcon: document.getElementById('invert-icon'),
+    loadCfgFile: document.getElementById('load-cfg-file'),
+    loadCfgBtn: document.getElementById('load-cfg-btn'),
 };
 
-const buttonIconBlobs = new Map();
+const iconBlobs = new Map();
 
-let currentIconBlob = null;
+function normalizeSdcardPath(path) {
+    const cleaned = path.trim().replace(/^\/+|^\\+/, '');
+    const segments = cleaned.split(/[\\/]+/).filter(segment => segment && segment !== '.' && segment !== '..');
+    if (segments.length === 0) {
+        return '';
+    }
+    if (segments[0].toLowerCase() !== 'icons') {
+        segments.unshift('icons');
+    }
+    return segments.join('/');
+}
+
+function utf8Encode(value) {
+    return new TextEncoder().encode(value);
+}
+
+function concatUint8Arrays(arrays) {
+    const length = arrays.reduce((sum, arr) => sum + arr.length, 0);
+    const result = new Uint8Array(length);
+    let offset = 0;
+    arrays.forEach(arr => {
+        result.set(arr, offset);
+        offset += arr.length;
+    });
+    return result;
+}
+
+function encodeLength(major, length) {
+    if (length < 24) {
+        return new Uint8Array([((major << 5) | length)]);
+    }
+    if (length < 0x100) {
+        return new Uint8Array([((major << 5) | 24), length]);
+    }
+    if (length < 0x10000) {
+        const arr = new Uint8Array(3);
+        arr[0] = (major << 5) | 25;
+        arr[1] = (length >> 8) & 0xff;
+        arr[2] = length & 0xff;
+        return arr;
+    }
+    const arr = new Uint8Array(5);
+    arr[0] = (major << 5) | 26;
+    arr[1] = (length >>> 24) & 0xff;
+    arr[2] = (length >>> 16) & 0xff;
+    arr[3] = (length >>> 8) & 0xff;
+    arr[4] = length & 0xff;
+    return arr;
+}
+
+function encodeValue(value) {
+    if (value === null) {
+        return new Uint8Array([0xf6]);
+    }
+    if (typeof value === 'boolean') {
+        return new Uint8Array([value ? 0xf5 : 0xf4]);
+    }
+    if (typeof value === 'number') {
+        if (!Number.isInteger(value)) {
+            throw new Error('CBOR encoder only supports integer values');
+        }
+        if (value >= 0) {
+            return concatUint8Arrays([encodeLength(0, value)]);
+        }
+        return concatUint8Arrays([encodeLength(1, -value - 1)]);
+    }
+    if (typeof value === 'string') {
+        const bytes = utf8Encode(value);
+        return concatUint8Arrays([encodeLength(3, bytes.length), bytes]);
+    }
+    if (Array.isArray(value)) {
+        const parts = [encodeLength(4, value.length)];
+        value.forEach(item => parts.push(encodeValue(item)));
+        return concatUint8Arrays(parts);
+    }
+    if (typeof value === 'object') {
+        const keys = Object.keys(value);
+        const parts = [encodeLength(5, keys.length)];
+        keys.forEach(key => {
+            parts.push(encodeValue(key));
+            parts.push(encodeValue(value[key]));
+        });
+        return concatUint8Arrays(parts);
+    }
+    throw new Error('Unsupported CBOR value type');
+}
+
+function cborEncode(value) {
+    return encodeValue(value);
+}
+
+function readCborLength(bytes, offset, info) {
+    if (info < 24) {
+        return [info, 0];
+    }
+    if (info === 24) {
+        return [bytes[offset], 1];
+    }
+    if (info === 25) {
+        return [(bytes[offset] << 8) | bytes[offset + 1], 2];
+    }
+    if (info === 26) {
+        return [
+            (bytes[offset] << 24) | (bytes[offset + 1] << 16) | (bytes[offset + 2] << 8) | bytes[offset + 3],
+            4,
+        ];
+    }
+    throw new Error('Unsupported CBOR length encoding');
+}
+
+function decodeCbor(bytes, offset = 0) {
+    const initial = bytes[offset++];
+    const major = initial >> 5;
+    const info = initial & 0x1f;
+    switch (major) {
+        case 0: {
+            const [value, lengthBytes] = readCborLength(bytes, offset, info);
+            return [value, offset + lengthBytes];
+        }
+        case 1: {
+            const [value, lengthBytes] = readCborLength(bytes, offset, info);
+            return [-(value + 1), offset + lengthBytes];
+        }
+        case 2: {
+            const [length, lengthBytes] = readCborLength(bytes, offset, info);
+            const start = offset + lengthBytes;
+            const end = start + length;
+            return [bytes.subarray(start, end), end];
+        }
+        case 3: {
+            const [length, lengthBytes] = readCborLength(bytes, offset, info);
+            const start = offset + lengthBytes;
+            const end = start + length;
+            const value = new TextDecoder().decode(bytes.subarray(start, end));
+            return [value, end];
+        }
+        case 4: {
+            const [count, lengthBytes] = readCborLength(bytes, offset, info);
+            offset += lengthBytes;
+            const arr = [];
+            for (let i = 0; i < count; i += 1) {
+                const [item, nextOffset] = decodeCbor(bytes, offset);
+                arr.push(item);
+                offset = nextOffset;
+            }
+            return [arr, offset];
+        }
+        case 5: {
+            const [count, lengthBytes] = readCborLength(bytes, offset, info);
+            offset += lengthBytes;
+            const obj = {};
+            for (let i = 0; i < count; i += 1) {
+                const [key, nextOffset] = decodeCbor(bytes, offset);
+                if (typeof key !== 'string') {
+                    throw new Error('CBOR map keys must be strings');
+                }
+                const [value, valueOffset] = decodeCbor(bytes, nextOffset);
+                obj[key] = value;
+                offset = valueOffset;
+            }
+            return [obj, offset];
+        }
+        case 7: {
+            if (info === 20) return [false, offset];
+            if (info === 21) return [true, offset];
+            if (info === 22) return [null, offset];
+            if (info === 23) return [undefined, offset];
+            break;
+        }
+    }
+    throw new Error('Unsupported CBOR major type: ' + major);
+}
+
+function cborDecode(buffer) {
+    const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+    const [value, offset] = decodeCbor(bytes, 0);
+    if (offset !== bytes.length) {
+        throw new Error('Extra CBOR bytes detected');
+    }
+    return value;
+}
+
+function toHex(data) {
+    return Array.from(data).map(byte => byte.toString(16).padStart(2, '0')).join(' ');
+}
+
+const CRC32_TABLE = new Uint32Array(256);
+for (let i = 0; i < 256; i += 1) {
+    let c = i;
+    for (let j = 0; j < 8; j += 1) {
+        c = (c & 1) ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    }
+    CRC32_TABLE[i] = c >>> 0;
+}
+
+function crc32(data) {
+    let crc = 0xffffffff;
+    for (let i = 0; i < data.length; i += 1) {
+        crc = (crc >>> 8) ^ CRC32_TABLE[(crc ^ data[i]) & 0xff];
+    }
+    return (crc ^ 0xffffffff) >>> 0;
+}
+
+function createZip(entries) {
+    const localParts = [];
+    const centralParts = [];
+    let offset = 0;
+
+    entries.forEach(({ name, data }) => {
+        const nameBytes = utf8Encode(name);
+        const crc = crc32(data);
+        const localHeader = new Uint8Array(30);
+        const localView = new DataView(localHeader.buffer);
+        localView.setUint32(0, 0x04034b50, true);
+        localView.setUint16(4, 20, true);
+        localView.setUint16(6, 0, true);
+        localView.setUint16(8, 0, true);
+        localView.setUint16(10, 0, true);
+        localView.setUint32(14, crc, true);
+        localView.setUint32(18, data.length, true);
+        localView.setUint32(22, data.length, true);
+        localView.setUint16(26, nameBytes.length, true);
+        localView.setUint16(28, 0, true);
+        localParts.push(localHeader, nameBytes, data);
+
+        const centralHeader = new Uint8Array(46);
+        const centralView = new DataView(centralHeader.buffer);
+        centralView.setUint32(0, 0x02014b50, true);
+        centralView.setUint16(4, 20, true);
+        centralView.setUint16(6, 20, true);
+        centralView.setUint16(8, 0, true);
+        centralView.setUint16(10, 0, true);
+        centralView.setUint16(12, 0, true);
+        centralView.setUint16(14, 0, true);
+        centralView.setUint32(16, crc, true);
+        centralView.setUint32(20, data.length, true);
+        centralView.setUint32(24, data.length, true);
+        centralView.setUint16(26, nameBytes.length, true);
+        centralView.setUint16(28, 0, true);
+        centralView.setUint16(30, 0, true);
+        centralView.setUint16(32, 0, true);
+        centralView.setUint16(34, 0, true);
+        centralView.setUint16(36, 0, true);
+        centralView.setUint32(38, 0, true);
+        centralView.setUint32(42, offset, true);
+        centralParts.push(centralHeader, nameBytes);
+
+        offset += localHeader.length + nameBytes.length + data.length;
+    });
+
+    const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0);
+    const endRecord = new Uint8Array(22);
+    const endView = new DataView(endRecord.buffer);
+    endView.setUint32(0, 0x06054b50, true);
+    endView.setUint16(4, 0, true);
+    endView.setUint16(6, 0, true);
+    endView.setUint16(8, entries.length, true);
+    endView.setUint16(10, entries.length, true);
+    endView.setUint32(12, centralSize, true);
+    endView.setUint32(16, offset, true);
+    endView.setUint16(20, 0, true);
+
+    return new Blob([...localParts, ...centralParts, endRecord], { type: 'application/zip' });
+}
 
 function createBmpBlob(width, height, pixels) {
     const rowBytes = Math.ceil(width / 32) * 4;
@@ -119,15 +375,19 @@ function createBmpBlob(width, height, pixels) {
     return new Blob([buffer], { type: 'image/bmp' });
 }
 
-function convertIconImage(img, threshold = 128, invert = false) {
-    const ctx = elements.iconCanvas.getContext('2d');
+function convertIconImage(img) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 20;
+    canvas.height = 20;
+    const ctx = canvas.getContext('2d');
     if (!ctx) {
         return null;
     }
+
     ctx.clearRect(0, 0, 20, 20);
     ctx.drawImage(img, 0, 0, 20, 20);
     const imageData = ctx.getImageData(0, 0, 20, 20);
-    const pixels = new Uint8Array(20 * 20);
+    const pixels = new Uint8Array(400);
     const data = imageData.data;
 
     for (let i = 0; i < data.length; i += 4) {
@@ -135,10 +395,7 @@ function convertIconImage(img, threshold = 128, invert = false) {
         const g = data[i + 1];
         const b = data[i + 2];
         const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-        let pixel = gray >= threshold ? 1 : 0;
-        if (invert) {
-            pixel = 1 - pixel;
-        }
+        const pixel = gray >= 128 ? 1 : 0;
         const value = pixel ? 255 : 0;
         data[i] = value;
         data[i + 1] = value;
@@ -150,34 +407,44 @@ function convertIconImage(img, threshold = 128, invert = false) {
     return { blob: createBmpBlob(20, 20, pixels), pixels };
 }
 
-function updateIconFromFile() {
-    const file = elements.iconFile.files?.[0];
-    if (!file) {
-        return;
-    }
+function setFieldIcon(fieldId, file) {
     const reader = new FileReader();
     reader.onload = () => {
         const image = new Image();
         image.onload = () => {
-            const threshold = parseInt(elements.thresholdSlider.value);
-            const invert = elements.invertIcon.checked;
-            const iconData = convertIconImage(image, threshold, invert);
-            currentIconBlob = iconData?.blob || null;
-            elements.downloadIconBtn.disabled = !currentIconBlob;
+            const iconData = convertIconImage(image);
+            if (!iconData) {
+                showFeedback('Failed to convert icon image.', 'error');
+                return;
+            }
+            const fileName = file.name.replace(/\.[^.]+$/, '.bmp');
+            const defaultPath = normalizeSdcardPath(`icons/${fileName}`);
+            const pathInput = document.getElementById(`${fieldId}-icon-path`);
+            if (pathInput instanceof HTMLInputElement && !pathInput.value.trim()) {
+                pathInput.value = defaultPath;
+            }
+            iconBlobs.set(fieldId, { blob: iconData.blob, name: fileName, pixels: iconData.pixels });
+            setFieldIconPreview(fieldId, iconData.blob);
+            const downloadBtn = document.getElementById(`${fieldId}-icon-download`);
+            if (downloadBtn instanceof HTMLButtonElement) {
+                downloadBtn.disabled = false;
+            }
+            updateOutput();
         };
         image.src = reader.result;
     };
     reader.readAsDataURL(file);
 }
 
-function downloadIcon() {
-    if (!currentIconBlob) {
+function downloadFieldIcon(fieldId) {
+    const icon = iconBlobs.get(fieldId);
+    if (!icon) {
         return;
     }
-    const url = URL.createObjectURL(currentIconBlob);
+    const url = URL.createObjectURL(icon.blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'icon.bmp';
+    a.download = icon.name;
     a.click();
     URL.revokeObjectURL(url);
 }
@@ -191,35 +458,27 @@ function createTextInput(id, labelText, placeholder = '') {
     `;
 }
 
-function createDatalist(id) {
-    return `
-        <datalist id="${id}">
-            ${KEY_CODES.map(code => `<option value="${code}"></option>`).join('')}
-        </datalist>
-    `;
-}
-
 function createButtonCard(field) {
-    const html = `
+    return `
         <div class="card">
             <h3>${field.title}</h3>
             ${createTextInput(`${field.id}-text`, 'Display text', 'Label or name')}
-            <label>
-                Upload icon image
-                <input id="${field.id}-icon-file" class="button-icon-file" type="file" accept="image/*" />
+            ${createTextInput(`${field.id}-icon-path`, 'Icon path', `icons/${field.id}.bmp`)}
+            <label class="icon-input-label">
+                Upload icon
+                <input id="${field.id}-icon-file" class="field-icon-file" type="file" accept="image/*" />
             </label>
             <div class="button-icon-row">
                 <canvas id="${field.id}-icon-preview" class="button-icon-preview" width="20" height="20"></canvas>
-                <button id="${field.id}-icon-download" class="icon-download" type="button" disabled>Download icon BMP</button>
+                <button id="${field.id}-icon-download" class="icon-download" type="button" disabled>Download BMP</button>
             </div>
             <label for="${field.id}-keystrokes">
                 Keystrokes
-                <textarea id="${field.id}-keystrokes" rows="5" placeholder="A\nLeftControl,C"></textarea>
+                <textarea id="${field.id}-keystrokes" rows="4" placeholder="A\nLeftControl,C"></textarea>
             </label>
             <small>One chord per line. Comma-separated key names.</small>
         </div>
     `;
-    return html;
 }
 
 function createEncoderCard(field) {
@@ -234,6 +493,15 @@ function createEncoderCard(field) {
         <div class="card">
             <h3>${field.title}</h3>
             ${createTextInput(`${field.id}-text`, 'Display text', 'Label or name')}
+            ${createTextInput(`${field.id}-icon-path`, 'Icon path', `icons/${field.id}.bmp`)}
+            <label class="icon-input-label">
+                Upload icon
+                <input id="${field.id}-icon-file" class="field-icon-file" type="file" accept="image/*" />
+            </label>
+            <div class="button-icon-row">
+                <canvas id="${field.id}-icon-preview" class="button-icon-preview" width="20" height="20"></canvas>
+                <button id="${field.id}-icon-download" class="icon-download" type="button" disabled>Download BMP</button>
+            </div>
             ${sections}
             <small>One chord per line. Comma-separated key names.</small>
         </div>
@@ -243,7 +511,7 @@ function createEncoderCard(field) {
 function createLedCard(index) {
     return `
         <div class="card">
-            <h3>LED ${index}</h3>
+            <h3>LED ${index + 1}</h3>
             <label>
                 Color
                 <input id="led-${index}" type="color" value="#ffffff" />
@@ -260,6 +528,13 @@ function parseKeystrokes(text) {
         .map(line => line.split(',').map(key => key.trim()).filter(Boolean));
 }
 
+function formatKeystrokes(chords) {
+    if (!Array.isArray(chords)) {
+        return '';
+    }
+    return chords.map(chord => (Array.isArray(chord) ? chord.join(',') : '')).join('\n');
+}
+
 function buildConfig() {
     const config = {
         name: elements.configName.value.trim(),
@@ -267,26 +542,36 @@ function buildConfig() {
 
     buttonFields.forEach(field => {
         const text = document.getElementById(`${field.id}-text`).value.trim();
+        const iconPathValue = document.getElementById(`${field.id}-icon-path`).value.trim();
         const keystrokes = parseKeystrokes(document.getElementById(`${field.id}-keystrokes`).value);
-        const iconData = buttonIconBlobs.get(field.id);
-        config[field.id] = {
+
+        const buttonConfig = {
             display_text: text,
-            display_icon_pixels: iconData ? Array.from(iconData.pixels) : null,
+            display_icon_path: iconPathValue ? normalizeSdcardPath(iconPathValue) : null,
             keystroke: keystrokes,
         };
+        const icon = iconBlobs.get(field.id);
+        if (icon) {
+            buttonConfig.display_icon_pixels = Array.from(icon.pixels);
+        }
+        config[field.id] = buttonConfig;
     });
 
     encoderFields.forEach(field => {
         const text = document.getElementById(`${field.id}-text`).value.trim();
+        const iconPathValue = document.getElementById(`${field.id}-icon-path`).value.trim();
         const encoderConfig = {
             display_text: text,
-            display_icon_pixels: null,
+            display_icon_path: iconPathValue ? normalizeSdcardPath(iconPathValue) : null,
         };
 
+        const icon = iconBlobs.get(field.id);
+        if (icon) {
+            encoderConfig.display_icon_pixels = Array.from(icon.pixels);
+        }
+
         field.types.forEach(type => {
-            encoderConfig[`keystroke_${type}`] = parseKeystrokes(
-                document.getElementById(`${field.id}-${type}-keystrokes`).value,
-            );
+            encoderConfig[`keystroke_${type}`] = parseKeystrokes(document.getElementById(`${field.id}-${type}-keystrokes`).value);
         });
 
         config[field.id] = encoderConfig;
@@ -304,24 +589,28 @@ function buildConfig() {
 }
 
 function updateDisplayPreview(config) {
-    let html = `<div class="display-name">${config.name}</div>`;
+    let html = `<div class="display-name">${config.name || 'Unnamed'}</div>`;
     html += '<div class="display-buttons">';
+
     buttonFields.forEach(field => {
         const btn = config[field.id];
-        if (Array.isArray(btn.display_icon_pixels) && btn.display_icon_pixels.length === 400) {
+        const icon = iconBlobs.get(field.id);
+        if (icon) {
             html += `<div class="display-button"><canvas class="display-icon-canvas" id="display-preview-${field.id}" width="20" height="20"></canvas></div>`;
         } else {
             html += `<div class="display-button">${btn.display_text || ''}</div>`;
         }
     });
+
     html += '</div>';
     elements.displayPreview.innerHTML = html;
+
     buttonFields.forEach(field => {
-        const btn = config[field.id];
-        if (Array.isArray(btn.display_icon_pixels) && btn.display_icon_pixels.length === 400) {
+        const icon = iconBlobs.get(field.id);
+        if (icon) {
             const canvas = document.getElementById(`display-preview-${field.id}`);
             if (canvas instanceof HTMLCanvasElement) {
-                drawDisplayIcon(canvas, btn.display_icon_pixels);
+                drawDisplayIcon(canvas, icon.pixels);
             }
         }
     });
@@ -333,7 +622,6 @@ function drawDisplayIcon(canvas, pixels) {
         return;
     }
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.imageSmoothingEnabled = false;
     for (let y = 0; y < 20; y += 1) {
         for (let x = 0; x < 20; x += 1) {
             const pixel = pixels[y * 20 + x];
@@ -341,132 +629,68 @@ function drawDisplayIcon(canvas, pixels) {
             ctx.fillRect(x, y, 1, 1);
         }
     }
-    canvas.style.width = `${canvas.width * 3}px`;
-    canvas.style.height = `${canvas.height * 3}px`;
 }
 
 function validateConfig(config) {
     const errors = [];
 
-    // Check name
     if (!config.name || typeof config.name !== 'string') {
         errors.push('Config name must be a non-empty string.');
     }
 
-    // Check buttons
-    for (let i = 0; i < 10; i++) {
-        const btn = config[`button${i}`];
+    buttonFields.forEach((field, index) => {
+        const btn = config[field.id];
         if (!btn || typeof btn !== 'object') {
-            errors.push(`Button ${i + 1}: Invalid structure.`);
-            continue;
+            errors.push(`Button ${index + 1}: Invalid structure.`);
+            return;
         }
         if (typeof btn.display_text !== 'string') {
-            errors.push(`Button ${i + 1}: display_text must be a string.`);
+            errors.push(`Button ${index + 1}: display_text must be a string.`);
         }
-        if (btn.display_icon_pixels != null && !Array.isArray(btn.display_icon_pixels)) {
-            errors.push(`Button ${i + 1}: display_icon_pixels must be an array or null.`);
-        } else if (Array.isArray(btn.display_icon_pixels)) {
-            if (btn.display_icon_pixels.length !== 400) {
-                errors.push(`Button ${i + 1}: display_icon_pixels must have 400 values.`);
-            } else {
-                btn.display_icon_pixels.forEach((value, idx) => {
-                    if (value !== 0 && value !== 1) {
-                        errors.push(`Button ${i + 1}: display_icon_pixels[${idx}] must be 0 or 1.`);
-                    }
-                });
-            }
+        if (btn.display_icon_path != null && typeof btn.display_icon_path !== 'string') {
+            errors.push(`Button ${index + 1}: display_icon_path must be a string or null.`);
         }
         if (!Array.isArray(btn.keystroke)) {
-            errors.push(`Button ${i + 1}: keystroke must be an array.`);
+            errors.push(`Button ${index + 1}: keystroke must be an array.`);
         } else {
-            btn.keystroke.forEach((chord, idx) => {
+            btn.keystroke.forEach((chord, chordIndex) => {
                 if (!Array.isArray(chord)) {
-                    errors.push(`Button ${i + 1}: keystroke[${idx}] must be an array.`);
+                    errors.push(`Button ${index + 1}: keystroke[${chordIndex}] must be an array.`);
                 } else {
                     chord.forEach(key => {
                         if (!KEY_CODES.includes(key)) {
-                            errors.push(`Button ${i + 1}: Invalid key '${key}' in keystroke.`);
+                            errors.push(`Button ${index + 1}: Invalid key '${key}' in keystroke.`);
                         }
                     });
                 }
             });
         }
-    }
+    });
 
-    // Check menu_encoder
-    const menuEnc = config.menu_encoder;
-    if (!menuEnc || typeof menuEnc !== 'object') {
-        errors.push('Menu Encoder: Invalid structure.');
-    } else {
-        if (typeof menuEnc.display_text !== 'string') {
-            errors.push('Menu Encoder: display_text must be a string.');
-        }
-        if (menuEnc.display_icon_pixels != null && !Array.isArray(menuEnc.display_icon_pixels)) {
-            errors.push('Menu Encoder: display_icon_pixels must be an array or null.');
-        } else if (Array.isArray(menuEnc.display_icon_pixels)) {
-            if (menuEnc.display_icon_pixels.length !== 400) {
-                errors.push('Menu Encoder: display_icon_pixels must have 400 values.');
-            } else {
-                menuEnc.display_icon_pixels.forEach((value, idx) => {
-                    if (value !== 0 && value !== 1) {
-                        errors.push(`Menu Encoder: display_icon_pixels[${idx}] must be 0 or 1.`);
-                    }
-                });
-            }
-        }
-        ['keystroke_left', 'keystroke_right'].forEach(dir => {
-            if (!Array.isArray(menuEnc[dir])) {
-                errors.push(`Menu Encoder: ${dir} must be an array.`);
-            } else {
-                menuEnc[dir].forEach((chord, idx) => {
-                    if (!Array.isArray(chord)) {
-                        errors.push(`Menu Encoder: ${dir}[${idx}] must be an array.`);
-                    } else {
-                        chord.forEach(key => {
-                            if (!KEY_CODES.includes(key)) {
-                                errors.push(`Menu Encoder: Invalid key '${key}' in ${dir}.`);
-                            }
-                        });
-                    }
-                });
-            }
-        });
-    }
-
-    // Check encoder1 and encoder2
-    ['encoder1', 'encoder2'].forEach(encName => {
-        const enc = config[encName];
+    encoderFields.forEach(field => {
+        const enc = config[field.id];
         if (!enc || typeof enc !== 'object') {
-            errors.push(`${encName}: Invalid structure.`);
+            errors.push(`${field.title}: Invalid structure.`);
             return;
         }
         if (typeof enc.display_text !== 'string') {
-            errors.push(`${encName}: display_text must be a string.`);
+            errors.push(`${field.title}: display_text must be a string.`);
         }
-        if (enc.display_icon_pixels != null && !Array.isArray(enc.display_icon_pixels)) {
-            errors.push(`${encName}: display_icon_pixels must be an array or null.`);
-        } else if (Array.isArray(enc.display_icon_pixels)) {
-            if (enc.display_icon_pixels.length !== 400) {
-                errors.push(`${encName}: display_icon_pixels must have 400 values.`);
-            } else {
-                enc.display_icon_pixels.forEach((value, idx) => {
-                    if (value !== 0 && value !== 1) {
-                        errors.push(`${encName}: display_icon_pixels[${idx}] must be 0 or 1.`);
-                    }
-                });
-            }
+        if (enc.display_icon_path != null && typeof enc.display_icon_path !== 'string') {
+            errors.push(`${field.title}: display_icon_path must be a string or null.`);
         }
-        ['keystroke_left', 'keystroke_right', 'keystroke_push'].forEach(dir => {
-            if (!Array.isArray(enc[dir])) {
-                errors.push(`${encName}: ${dir} must be an array.`);
+        field.types.forEach(type => {
+            const dir = enc[`keystroke_${type}`];
+            if (!Array.isArray(dir)) {
+                errors.push(`${field.title}: keystroke_${type} must be an array.`);
             } else {
-                enc[dir].forEach((chord, idx) => {
+                dir.forEach((chord, chordIndex) => {
                     if (!Array.isArray(chord)) {
-                        errors.push(`${encName}: ${dir}[${idx}] must be an array.`);
+                        errors.push(`${field.title}: keystroke_${type}[${chordIndex}] must be an array.`);
                     } else {
                         chord.forEach(key => {
                             if (!KEY_CODES.includes(key)) {
-                                errors.push(`${encName}: Invalid key '${key}' in ${dir}.`);
+                                errors.push(`${field.title}: Invalid key '${key}' in keystroke_${type}.`);
                             }
                         });
                     }
@@ -475,7 +699,6 @@ function validateConfig(config) {
         });
     });
 
-    // Check leds
     if (!Array.isArray(config.leds) || config.leds.length !== 8) {
         errors.push('LEDs must be an array of 8 objects.');
     } else {
@@ -483,9 +706,9 @@ function validateConfig(config) {
             if (typeof led !== 'object' || led === null) {
                 errors.push(`LED ${idx + 1}: Must be an object.`);
             } else {
-                ['r', 'g', 'b'].forEach(c => {
-                    if (typeof led[c] !== 'number' || led[c] < 0 || led[c] > 255 || !Number.isInteger(led[c])) {
-                        errors.push(`LED ${idx + 1}: ${c} must be an integer 0-255.`);
+                ['r', 'g', 'b'].forEach(color => {
+                    if (typeof led[color] !== 'number' || led[color] < 0 || led[color] > 255 || !Number.isInteger(led[color])) {
+                        errors.push(`LED ${idx + 1}: ${color} must be an integer 0-255.`);
                     }
                 });
             }
@@ -497,16 +720,25 @@ function validateConfig(config) {
 
 function showFeedback(message, type = 'info') {
     elements.feedback.textContent = message;
-    elements.feedback.className = 'feedback ' + type;
+    elements.feedback.className = `feedback ${type}`;
     setTimeout(() => {
         elements.feedback.textContent = '';
         elements.feedback.className = 'feedback';
-    }, 3000);
+    }, 4000);
 }
 
-function downloadJson() {
-    const content = elements.outputJson.value;
-    const blob = new Blob([content], { type: 'text/plain' });
+function downloadCfg() {
+    const config = buildConfig();
+    const errors = validateConfig(config);
+    if (errors.length > 0) {
+        elements.validationErrors.innerHTML = '<ul>' + errors.map(error => `<li>${error}</li>`).join('') + '</ul>';
+        showFeedback('Fix config errors before downloading.', 'error');
+        return;
+    }
+    elements.validationErrors.innerHTML = '';
+
+    const content = cborEncode(config);
+    const blob = new Blob([content], { type: 'application/octet-stream' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     const filename = sanitizeFilename(elements.configName.value.trim() || 'macro_config');
@@ -514,119 +746,169 @@ function downloadJson() {
     a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
-    showFeedback(`CFG saved as ${filename}`, 'success');
+    showFeedback(`Config saved as ${filename}`, 'success');
 }
 
-function loadJson() {
-    const file = elements.loadJsonFile.files[0];
+function downloadPackage() {
+    const config = buildConfig();
+    const errors = validateConfig(config);
+    if (errors.length > 0) {
+        elements.validationErrors.innerHTML = '<ul>' + errors.map(error => `<li>${error}</li>`).join('') + '</ul>';
+        showFeedback('Fix config errors before exporting the package.', 'error');
+        return;
+    }
+    elements.validationErrors.innerHTML = '';
+
+    const entries = [];
+    const configName = sanitizeFilename(elements.configName.value.trim() || 'macro_config');
+    entries.push({ name: configName, data: cborEncode(config) });
+
+    const iconPaths = new Map();
+
+    [...buttonFields, ...encoderFields].forEach(field => {
+        const iconPath = document.getElementById(`${field.id}-icon-path`);
+        if (!(iconPath instanceof HTMLInputElement)) {
+            return;
+        }
+        const pathValue = iconPath.value.trim();
+        if (!pathValue) {
+            return;
+        }
+        const normalized = normalizeSdcardPath(pathValue);
+        if (!normalized) {
+            return;
+        }
+        const icon = iconBlobs.get(field.id);
+        if (!icon) {
+            elements.validationErrors.innerHTML = `<p>Icon file missing for ${field.title}. Upload an icon to include it in the package.</p>`;
+            showFeedback(`Missing icon upload for ${field.title}`, 'error');
+            throw new Error('Missing icon upload');
+        }
+        if (!iconPaths.has(normalized)) {
+            iconPaths.set(normalized, icon.blob);
+        }
+    });
+
+    iconPaths.forEach((blob, path) => {
+        entries.push({ name: path, data: new Uint8Array(blobToArrayBuffer(blob)) });
+    });
+
+    const zip = createZip(entries);
+    const url = URL.createObjectURL(zip);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = elements.configName.value.trim() ? `${elements.configName.value.trim()}-sdcard.zip` : 'macro_config-sdcard.zip';
+    a.click();
+    URL.revokeObjectURL(url);
+    showFeedback('SD card package exported.', 'success');
+}
+
+function blobToArrayBuffer(blob) {
+    const reader = new FileReaderSync();
+    return reader.readAsArrayBuffer(blob);
+}
+
+function sanitizeFilename(name) {
+    let base = name.replace(/[^a-zA-Z0-9_]/g, '').toUpperCase();
+    if (base.length === 0) base = 'CONFIG';
+    base = base.substring(0, 8);
+    return `${base}.CFG`;
+}
+
+function loadCfg() {
+    const file = elements.loadCfgFile.files?.[0];
     if (!file) {
-        showFeedback('Please select a CFG file first.', 'error');
+        showFeedback('Please select a config file first.', 'error');
         return;
     }
     const reader = new FileReader();
     reader.onload = () => {
         try {
-            const config = JSON.parse(reader.result);
+            const config = cborDecode(reader.result);
             loadConfigIntoForm(config);
             updateOutput();
-            showFeedback(`CFG loaded: ${file.name}`, 'success');
-        } catch (e) {
-            showFeedback('Invalid CFG file: ' + e.message, 'error');
+            showFeedback(`Config loaded: ${file.name}`, 'success');
+        } catch (error) {
+            showFeedback(`Invalid config file: ${error.message}`, 'error');
         }
     };
-    reader.readAsText(file);
+    reader.readAsArrayBuffer(file);
 }
 
 function loadConfigIntoForm(config) {
-    buttonIconBlobs.clear();
+    iconBlobs.clear();
     elements.configName.value = config.name || '';
 
-    buttonFields.forEach((field, idx) => {
-        const btn = config[field.id];
-        if (btn) {
-            document.getElementById(`${field.id}-text`).value = btn.display_text || '';
-            if (Array.isArray(btn.display_icon_pixels) && btn.display_icon_pixels.length === 400) {
-                const pixels = Uint8Array.from(btn.display_icon_pixels);
-                const bmpBlob = createBmpBlob(20, 20, pixels);
-                buttonIconBlobs.set(field.id, { blob: bmpBlob, name: `${field.id}.bmp`, pixels });
-                setButtonIconPreview(field.id, bmpBlob);
-                const downloadBtn = document.getElementById(`${field.id}-icon-download`);
-                if (downloadBtn instanceof HTMLButtonElement) {
-                    downloadBtn.disabled = false;
-                }
-            } else {
-                setButtonIconPreview(field.id, null);
-                const downloadBtn = document.getElementById(`${field.id}-icon-download`);
-                if (downloadBtn instanceof HTMLButtonElement) {
-                    downloadBtn.disabled = true;
-                }
+    buttonFields.forEach(field => {
+        const btn = config[field.id] || {};
+        document.getElementById(`${field.id}-text`).value = btn.display_text || '';
+        document.getElementById(`${field.id}-icon-path`).value = btn.display_icon_path || '';
+
+        if (Array.isArray(btn.display_icon_pixels) && btn.display_icon_pixels.length === 400) {
+            const pixels = Uint8Array.from(btn.display_icon_pixels);
+            const bmpBlob = createBmpBlob(20, 20, pixels);
+            const defaultPath = normalizeSdcardPath(document.getElementById(`${field.id}-icon-path`).value.trim() || `icons/${field.id}.bmp`);
+            document.getElementById(`${field.id}-icon-path`).value = defaultPath;
+            iconBlobs.set(field.id, { blob: bmpBlob, name: `${field.id}.bmp`, pixels });
+            setFieldIconPreview(field.id, bmpBlob);
+            const downloadBtn = document.getElementById(`${field.id}-icon-download`);
+            if (downloadBtn instanceof HTMLButtonElement) {
+                downloadBtn.disabled = false;
             }
-            const keystrokes = btn.keystroke || [];
-            const text = keystrokes.map(chord => chord.join(',')).join('\n');
-            document.getElementById(`${field.id}-keystrokes`).value = text;
+        } else {
+            setFieldIconPreview(field.id, null);
+            const downloadBtn = document.getElementById(`${field.id}-icon-download`);
+            if (downloadBtn instanceof HTMLButtonElement) {
+                downloadBtn.disabled = true;
+            }
         }
+
+        document.getElementById(`${field.id}-keystrokes`).value = formatKeystrokes(btn.keystroke || []);
     });
 
-    const encoderIds = ['menu_encoder', 'encoder1', 'encoder2'];
-    encoderIds.forEach(encId => {
-        const enc = config[encId];
-        if (enc) {
-            document.getElementById(`${encId}-text`).value = enc.display_text || '';
-            const types = encId === 'menu_encoder' ? ['left', 'right'] : ['left', 'right', 'push'];
-            types.forEach(type => {
-                const keystrokes = enc[`keystroke_${type}`] || [];
-                const text = keystrokes.map(chord => chord.join(',')).join('\n');
-                document.getElementById(`${encId}-${type}-keystrokes`).value = text;
-            });
+    encoderFields.forEach(field => {
+        const enc = config[field.id] || {};
+        document.getElementById(`${field.id}-text`).value = enc.display_text || '';
+        document.getElementById(`${field.id}-icon-path`).value = enc.display_icon_path || '';
+
+        if (Array.isArray(enc.display_icon_pixels) && enc.display_icon_pixels.length === 400) {
+            const pixels = Uint8Array.from(enc.display_icon_pixels);
+            const bmpBlob = createBmpBlob(20, 20, pixels);
+            const defaultPath = normalizeSdcardPath(document.getElementById(`${field.id}-icon-path`).value.trim() || `icons/${field.id}.bmp`);
+            document.getElementById(`${field.id}-icon-path`).value = defaultPath;
+            iconBlobs.set(field.id, { blob: bmpBlob, name: `${field.id}.bmp`, pixels });
+            setFieldIconPreview(field.id, bmpBlob);
+            const downloadBtn = document.getElementById(`${field.id}-icon-download`);
+            if (downloadBtn instanceof HTMLButtonElement) {
+                downloadBtn.disabled = false;
+            }
+        } else {
+            setFieldIconPreview(field.id, null);
+            const downloadBtn = document.getElementById(`${field.id}-icon-download`);
+            if (downloadBtn instanceof HTMLButtonElement) {
+                downloadBtn.disabled = true;
+            }
         }
+
+        field.types.forEach(type => {
+            document.getElementById(`${field.id}-${type}-keystrokes`).value = formatKeystrokes(enc[`keystroke_${type}`] || []);
+        });
     });
 
-    if (config.leds && Array.isArray(config.leds)) {
+    if (Array.isArray(config.leds)) {
         config.leds.forEach((led, idx) => {
             if (led && typeof led === 'object') {
                 const r = Math.max(0, Math.min(255, led.r || 0));
                 const g = Math.max(0, Math.min(255, led.g || 0));
                 const b = Math.max(0, Math.min(255, led.b || 0));
-                const hex = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
-                document.getElementById(`led-${idx}`).value = hex;
+                document.getElementById(`led-${idx}`).value = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
             }
         });
     }
 }
 
-function loadJson() {
-    const file = elements.loadJsonFile.files[0];
-    if (!file) {
-        alert('Please select a CFG file first.');
-        return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-        try {
-            const config = JSON.parse(reader.result);
-            loadConfigIntoForm(config);
-            updateOutput();
-        } catch (e) {
-            alert('Invalid CFG file: ' + e.message);
-        }
-    };
-    reader.readAsText(file);
-}
-
-function updateOutput() {
-    const config = buildConfig();
-    const errors = validateConfig(config);
-    if (errors.length > 0) {
-        elements.validationErrors.innerHTML = '<ul>' + errors.map(e => `<li>${e}</li>`).join('') + '</ul>';
-    } else {
-        elements.validationErrors.innerHTML = '';
-    }
-    elements.outputJson.value = JSON.stringify(config, null, 4);
-    updateDisplayPreview(config);
-}
-
-function setButtonIconPreview(buttonId, blob) {
-    const preview = document.getElementById(`${buttonId}-icon-preview`);
+function setFieldIconPreview(fieldId, blob) {
+    const preview = document.getElementById(`${fieldId}-icon-preview`);
     if (!(preview instanceof HTMLCanvasElement)) {
         return;
     }
@@ -645,75 +927,17 @@ function setButtonIconPreview(buttonId, blob) {
     img.src = URL.createObjectURL(blob);
 }
 
-function updateButtonIconFromFile(buttonId) {
-    const input = document.getElementById(`${buttonId}-icon-file`);
-    if (!(input instanceof HTMLInputElement) || !input.files?.[0]) {
-        return;
+function updateOutput() {
+    const config = buildConfig();
+    const errors = validateConfig(config);
+    if (errors.length > 0) {
+        elements.validationErrors.innerHTML = '<ul>' + errors.map(error => `<li>${error}</li>`).join('') + '</ul>';
+    } else {
+        elements.validationErrors.innerHTML = '';
     }
-    const file = input.files[0];
-    const reader = new FileReader();
-    reader.onload = () => {
-        const image = new Image();
-        image.onload = () => {
-            const iconData = convertIconImage(image, 128, false);
-            if (!iconData) {
-                return;
-            }
-            const bmpBlob = iconData.blob;
-            if (!bmpBlob) {
-                return;
-            }
-            const fileName = file.name.replace(/\.[^.]+$/, '.bmp');
-            buttonIconBlobs.set(buttonId, { blob: bmpBlob, name: fileName, pixels: iconData.pixels });
-            const downloadBtn = document.getElementById(`${buttonId}-icon-download`);
-            if (downloadBtn instanceof HTMLButtonElement) {
-                downloadBtn.disabled = false;
-            }
-            setButtonIconPreview(buttonId, bmpBlob);
-            updateOutput();
-        };
-        image.src = reader.result;
-    };
-    reader.readAsDataURL(file);
-}
-
-function downloadButtonIcon(buttonId) {
-    const icon = buttonIconBlobs.get(buttonId);
-    if (!icon) {
-        return;
-    }
-    const url = URL.createObjectURL(icon.blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = icon.name;
-    a.click();
-    URL.revokeObjectURL(url);
-}
-
-function sanitizeFilename(name) {
-    // Sanitize to 8.3 format: uppercase, alphanum/underscore, max 8 chars, .CFG
-    let base = name.replace(/[^a-zA-Z0-9_]/g, '').toUpperCase();
-    if (base.length === 0) base = 'CONFIG';
-    base = base.substring(0, 8);
-    return base + '.CFG';
-}
-
-function downloadJson() {
-    const content = elements.outputJson.value;
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const filename = sanitizeFilename(elements.configName.value.trim() || 'macro_config');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-}
-
-function copyJson() {
-    navigator.clipboard.writeText(elements.outputJson.value).then(() => {
-        alert('CFG copied to clipboard');
-    });
+    const content = cborEncode(config);
+    elements.outputCbor.value = `CBOR (${content.length} bytes):\n${toHex(content)}`;
+    updateDisplayPreview(config);
 }
 
 function render() {
@@ -724,115 +948,68 @@ function render() {
 }
 
 function loadExampleConfig() {
-    const example = {
-        name: 'example',
-    };
-
+    elements.configName.value = 'example';
     buttonFields.forEach((field, idx) => {
         const char = String.fromCharCode(65 + idx);
-        example[field.id] = {
-            display_text: char,
-            keystroke: [[char]],
-        };
-    });
-
-    example.menu_encoder = {
-        display_text: 'Vol',
-        keystroke_left: [['VolumeDown']],
-        keystroke_right: [['VolumeUp']],
-    };
-
-    example.encoder1 = {
-        display_text: 'Copy/Paste',
-        keystroke_left: [['LeftControl', 'C']],
-        keystroke_right: [['LeftControl', 'V']],
-        keystroke_push: [['LeftControl', 'V']],
-    };
-
-    example.encoder2 = { ...example.encoder1 };
-    example.leds = [
-        { r: 255, g: 0, b: 0 },
-        { r: 0, g: 255, b: 0 },
-        { r: 0, g: 0, b: 255 },
-        { r: 255, g: 255, b: 0 },
-        { r: 255, g: 0, b: 255 },
-        { r: 0, g: 255, b: 255 },
-        { r: 255, g: 255, b: 255 },
-        { r: 128, g: 128, b: 128 },
-    ];
-
-    elements.configName.value = example.name;
-
-    buttonFields.forEach(field => {
-        document.getElementById(`${field.id}-text`).value = example[field.id].display_text;
-        document.getElementById(`${field.id}-keystrokes`).value = example[field.id].keystroke
-            .map(chord => chord.join(','))
-            .join('\n');
+        document.getElementById(`${field.id}-text`).value = char;
+        document.getElementById(`${field.id}-icon-path`).value = `icons/${field.id}.bmp`;
+        document.getElementById(`${field.id}-keystrokes`).value = `${char}`;
+        setFieldIconPreview(field.id, null);
+        const downloadBtn = document.getElementById(`${field.id}-icon-download`);
+        if (downloadBtn instanceof HTMLButtonElement) {
+            downloadBtn.disabled = true;
+        }
     });
 
     encoderFields.forEach(field => {
-        document.getElementById(`${field.id}-text`).value = example[field.id].display_text;
+        document.getElementById(`${field.id}-text`).value = field.title;
+        document.getElementById(`${field.id}-icon-path`).value = `icons/${field.id}.bmp`;
         field.types.forEach(type => {
-            document.getElementById(`${field.id}-${type}-keystrokes`).value = example[field.id][`keystroke_${type}`]
-                .map(chord => chord.join(','))
-                .join('\n');
+            document.getElementById(`${field.id}-${type}-keystrokes`).value = type === 'left' ? 'LeftControl,C' : type === 'right' ? 'LeftControl,V' : 'LeftControl,V';
         });
+        setFieldIconPreview(field.id, null);
+        const downloadBtn = document.getElementById(`${field.id}-icon-download`);
+        if (downloadBtn instanceof HTMLButtonElement) {
+            downloadBtn.disabled = true;
+        }
     });
 
-    example.leds.forEach((led, idx) => {
-        const hex = `#${led.r.toString(16).padStart(2, '0')}${led.g.toString(16).padStart(2, '0')}${led.b.toString(16).padStart(2, '0')}`;
-        document.getElementById(`led-${idx}`).value = hex;
+    Array.from({ length: 8 }, (_, idx) => {
+        document.getElementById(`led-${idx}`).value = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', '#ffffff', '#808080'][idx];
     });
 
+    iconBlobs.clear();
     updateOutput();
+}
+
+function collectIconFile(fieldId) {
+    const input = document.getElementById(`${fieldId}-icon-file`);
+    if (!(input instanceof HTMLInputElement) || !input.files?.[0]) {
+        return;
+    }
+    setFieldIcon(fieldId, input.files[0]);
 }
 
 render();
 loadExampleConfig();
 
-elements.updateJsonBtn.addEventListener('click', updateOutput);
-elements.copyJsonBtn.addEventListener('click', copyJson);
-elements.convertIconBtn.addEventListener('click', updateIconFromFile);
-elements.downloadIconBtn.addEventListener('click', downloadIcon);
+elements.updateBtn.addEventListener('click', updateOutput);
+elements.downloadCfgBtn.addEventListener('click', downloadCfg);
+elements.downloadPackageBtn.addEventListener('click', downloadPackage);
 elements.loadExampleBtn.addEventListener('click', loadExampleConfig);
-elements.loadJsonBtn.addEventListener('click', loadJson);
-elements.downloadJsonBtn.addEventListener('click', downloadJson);
-elements.thresholdSlider.addEventListener('input', () => {
-    elements.thresholdValue.textContent = elements.thresholdSlider.value;
-    if (elements.iconFile.files?.[0]) {
-        updateIconFromFile();
-    }
-});
-
-elements.invertIcon.addEventListener('change', () => {
-    if (elements.iconFile.files?.[0]) {
-        updateIconFromFile();
-    }
-});
+elements.loadCfgBtn.addEventListener('click', loadCfg);
 
 document.addEventListener('change', event => {
     const target = event.target;
-    if (!(target instanceof HTMLInputElement)) {
+    if (!(target instanceof HTMLElement)) {
         return;
     }
-    if (target.classList.contains('button-icon-file')) {
-        const buttonId = target.id.replace(/-icon-file$/, '');
-        updateButtonIconFromFile(buttonId);
-    }
-});
-
-document.addEventListener('click', event => {
-    const target = event.target;
-    if (!(target instanceof HTMLButtonElement)) {
-        return;
-    }
-    if (target.classList.contains('icon-download')) {
-        const buttonId = target.id.replace(/-icon-download$/, '');
-        downloadButtonIcon(buttonId);
+    if (target.classList.contains('field-icon-file')) {
+        const fieldId = target.id.replace(/-icon-file$/, '');
+        collectIconFile(fieldId);
     }
 });
 
 [...document.querySelectorAll('input, textarea')].forEach(el => {
     el.addEventListener('input', updateOutput);
 });
-elements.iconFile.addEventListener('change', updateIconFromFile);
