@@ -22,7 +22,7 @@ pub const CHARACTER_STYLE: MonoTextStyle<BinaryColor> =
     MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
 
 const ROTATION_SPACING: usize = 3;
-const ROTATION_SPACER: &str = &"   ";
+const ROTATION_SPACER: &str = "   ";
 
 trait Rotate {
     fn rotate(&self, amount: usize, length: usize) -> String;
@@ -38,7 +38,7 @@ impl Rotate for String {
         let index = amount % (len + ROTATION_SPACING);
         let (start, end) = new_string.split_at(index);
         new_string = format!("{}{}", end, start);
-        return new_string.chars().take(length).collect();
+        new_string.chars().take(length).collect()
     }
 }
 

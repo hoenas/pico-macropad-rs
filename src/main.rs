@@ -567,7 +567,7 @@ mod app {
             *c.local.rotation_counter += 1;
             c.shared.config.lock(|config| {
                 let rotation = *c.local.rotation_counter / TEXT_ROTATION_DOWNSAMPLING_FACTOR;
-                if *c.local.rotation_counter % TEXT_ROTATION_DOWNSAMPLING_FACTOR == 0 {
+                if (*c.local.rotation_counter).is_multiple_of(TEXT_ROTATION_DOWNSAMPLING_FACTOR) {
                     pico_macropad_rs::update_display::update_display(
                         c.local.display,
                         config,
@@ -842,7 +842,7 @@ mod app {
                     Err(e) => {
                         core::panic!("Failed to read keyboard report: {:?}", e)
                     }
-                    Ok(leds) => {}
+                    Ok(_leds) => {}
                 }
             }
         })

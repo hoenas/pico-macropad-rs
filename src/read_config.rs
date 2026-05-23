@@ -1,8 +1,6 @@
-use alloc::{string::String, vec::Vec};
+use alloc::string::String;
 use anyhow::Error;
 use embedded_sdmmc::{BlockDevice, Directory, ShortFileName, TimeSource};
-use embedded_graphics::geometry::Point;
-use tinybmp::RawBmp;
 
 use crate::MacroConfig;
 
@@ -38,7 +36,7 @@ pub fn read_config_file(
 ) -> anyhow::Result<MacroConfig> {
     // Load config file
     let (bytes_read, buffer) = read_file(root_dir, filename)?;
-    let mut config: MacroConfig = serde_json::from_slice(&buffer[..bytes_read])
+    let mut config: MacroConfig = serde_cbor::from_slice(&buffer[..bytes_read])
         .map_err(|_| Error::msg("Failed to parse config"))?;
     // Reverse keystrokes for easier popping later
     config.button0.keystroke.reverse();
@@ -88,6 +86,6 @@ pub fn write_example_config_file(
             embedded_sdmmc::Mode::ReadWriteCreateOrTruncate,
         )
         .unwrap();
-    let config_json = serde_json::to_string(&example_config).unwrap();
-    opened_file.write(config_json.as_bytes()).unwrap();
+    let config_cbor = serde_cbor::to_vec(&example_config).unwrap();
+    opened_file.write(&config_cbor).unwrap();
 }

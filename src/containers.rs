@@ -1,3 +1,4 @@
+#[derive(Default)]
 pub struct Encoder {
     pub value: usize,
     pub value_changed: bool,
@@ -9,20 +10,10 @@ impl Encoder {
     pub fn read_delta(&mut self) -> isize {
         let delta = self.delta;
         self.delta = 0;
-        return delta;
+        delta
     }
 }
 
-impl Default for Encoder {
-    fn default() -> Self {
-        Self {
-            value: 0,
-            value_changed: false,
-            delta: 0,
-            button: false,
-        }
-    }
-}
 
 #[derive(Default)]
 pub struct Encoders {
@@ -31,6 +22,7 @@ pub struct Encoders {
     pub encoder2: Encoder,
 }
 
+#[derive(Default)]
 pub struct MacroPadButton {
     pub pressed: bool,
     pub pressed_changed: bool,
@@ -47,14 +39,6 @@ impl MacroPadButton {
     }
 }
 
-impl Default for MacroPadButton {
-    fn default() -> Self {
-        Self {
-            pressed: false,
-            pressed_changed: false,
-        }
-    }
-}
 
 #[derive(Default)]
 pub struct MacroPadButtons {

@@ -18,7 +18,6 @@ panic-probe = { version = "1", features = ["print-defmt"] }
 rp-pico = { git = "https://github.com/hoenas/rp-hal-boards.git", branch = "dev/update-rp2040-hal"}
 embedded-sdmmc = "0.9.0"
 serde = { version = "1.0", default-features = false, features = ["derive"] }
-serde_json = { version = "1.0.149", default-features = false, features = ["alloc"] }
 rotary-encoder-hal = { version = "0.6.0", features = ["table-decoder"]}
 sh1106 = "0.5.0"
 usb-device = "0.3"
@@ -43,6 +42,7 @@ embedded-layout = { version = "0.4.2", default-features = false }
 usbd-hid = "0.9.0"
 anyhow = { version = "1.0.102", default-features = false }
 tinybmp = "0.7.0"
+serde_cbor = { version = "0.11.2", default-features = false, features = ["alloc"] }
 
 # cargo build/run
 [profile.dev]
