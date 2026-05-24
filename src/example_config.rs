@@ -6,6 +6,7 @@ pub fn get_example_config() -> MacroConfig {
         name: "example".into(),
         button0: ButtonConfig {
             display_text: String::from("A"),
+            display_icon: Some(include_bytes!("assets/test_icon.bmp").to_vec()),
             keystroke: vec![
                 vec![KeyboardCode::A],
                 vec![KeyboardCode::A],
@@ -16,6 +17,7 @@ pub fn get_example_config() -> MacroConfig {
         },
         button1: ButtonConfig {
             display_text: String::from("B"),
+            display_icon: Some(include_bytes!("assets/test_icon.bmp").to_vec()),
             keystroke: vec![
                 vec![KeyboardCode::B],
                 vec![KeyboardCode::B],
@@ -25,21 +27,25 @@ pub fn get_example_config() -> MacroConfig {
         },
         button2: ButtonConfig {
             display_text: String::from("C"),
+            display_icon: Some(include_bytes!("assets/test_icon.bmp").to_vec()),
             keystroke: vec![vec![KeyboardCode::C], vec![KeyboardCode::C]],
             ..Default::default()
         },
         button3: ButtonConfig {
             display_text: String::from("D"),
+            display_icon: Some(include_bytes!("assets/test_icon.bmp").to_vec()),
             keystroke: vec![vec![KeyboardCode::D]],
             ..Default::default()
         },
         button4: ButtonConfig {
             display_text: String::from("E"),
+            display_icon: Some(include_bytes!("assets/test_icon.bmp").to_vec()),
             keystroke: vec![vec![KeyboardCode::E]],
             ..Default::default()
         },
         button5: ButtonConfig {
             display_text: String::from("F"),
+            display_icon: Some(include_bytes!("assets/test_icon.bmp").to_vec()),
             keystroke: vec![vec![KeyboardCode::F]],
             ..Default::default()
         },

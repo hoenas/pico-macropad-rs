@@ -1,6 +1,5 @@
 use alloc::{format, string::String};
 use embedded_graphics::{
-    image::{Image, ImageRawBE},
     mono_font::{ascii::FONT_6X10, MonoTextStyle},
     pixelcolor::BinaryColor,
     prelude::*,
@@ -93,7 +92,7 @@ pub fn update_display(
         for col in 0..5 {
             let idx = row * 5 + col;
             let button = buttons[idx];
-            let x = (21 * col) as i32;
+            let x = (22 * col) as i32;
             let y = 24 + (row * 20) as i32;
             let top_left = origin + Point::new(x, y);
             draw_button_cell(display, button, top_left);
@@ -107,35 +106,19 @@ where
     DI: DrawTarget<Color = BinaryColor>,
     DI::Error: core::fmt::Debug,
 {
-    if let Some(pixels) = &button.display_icon_pixels {
-        draw_icon(display, pixels, top_left);
-    } else {
-        Text::with_alignment(
-            button.display_text.as_str(),
-            top_left + Point::new(10, 14),
-            CHARACTER_STYLE,
-            Alignment::Center,
-        )
-        .draw(display)
-        .unwrap();
-    }
-}
-
-fn draw_icon<DI>(display: &mut DI, pixels: &[u8], top_left: Point)
-where
-    DI: DrawTarget<Color = BinaryColor>,
-    DI::Error: core::fmt::Debug,
-{
-    let mut packed = [0u8; 50];
-    for y in 0..20 {
-        for x in 0..20 {
-            if pixels[y * 20 + x] != 0 {
-                let index = y * 3 + (x / 8);
-                packed[index] |= 0x80 >> (x % 8);
-            }
+    if let Some(icon_bytes) = &button.display_icon {
+        if let Ok(bmp) = tinybmp::Bmp::<BinaryColor>::from_slice(icon_bytes) {
+            bmp.draw(&mut display.translated(top_left)).unwrap();
+            return;
         }
     }
-    Image::new(&ImageRawBE::new(&packed, 20), top_left)
-        .draw(display)
-        .unwrap();
+
+    Text::with_alignment(
+        button.display_text.as_str(),
+        top_left + Point::new(10, 14),
+        CHARACTER_STYLE,
+        Alignment::Center,
+    )
+    .draw(display)
+    .unwrap();
 }

@@ -1,3 +1,4 @@
+#![cfg(not(test))]
 #![no_std]
 #![no_main]
 
@@ -723,43 +724,46 @@ mod app {
     fn encoder_update(c: encoder_update::Context) {
         // Check encoders
         // - menu_encoder
-        let menu_encoder_increment = if let Ok(direction) = c.local.menu_encoder.update() {
-            if direction == Direction::Clockwise {
-                -1
-            } else if direction == Direction::CounterClockwise {
-                1
-            } else {
-                0
+        let menu_encoder_increment = match c.local.menu_encoder.update() {
+            Ok(direction) => {
+                if direction == Direction::Clockwise {
+                    -1
+                } else if direction == Direction::CounterClockwise {
+                    1
+                } else {
+                    0
+                }
             }
-        } else {
-            0
+            Err(_) => 0,
         };
         let menu_encoder_switch_value = c.local.menu_encoder_switch.is_low().unwrap();
 
         // - encoder1
-        let encoder1_increment = if let Ok(direction) = c.local.encoder1.update() {
-            if direction == Direction::Clockwise {
-                -1
-            } else if direction == Direction::CounterClockwise {
-                1
-            } else {
-                0
+        let encoder1_increment = match c.local.encoder1.update() {
+            Ok(direction) => {
+                if direction == Direction::Clockwise {
+                    -1
+                } else if direction == Direction::CounterClockwise {
+                    1
+                } else {
+                    0
+                }
             }
-        } else {
-            0
+            Err(_) => 0,
         };
         let encoder1_switch_value = c.local.encoder1_switch.is_low().unwrap();
         // - encoder2
-        let encoder2_increment = if let Ok(direction) = c.local.encoder2.update() {
-            if direction == Direction::Clockwise {
-                -1
-            } else if direction == Direction::CounterClockwise {
-                1
-            } else {
-                0
+        let encoder2_increment = match c.local.encoder2.update() {
+            Ok(direction) => {
+                if direction == Direction::Clockwise {
+                    -1
+                } else if direction == Direction::CounterClockwise {
+                    1
+                } else {
+                    0
+                }
             }
-        } else {
-            0
+            Err(_) => 0,
         };
         let encoder2_switch_value = c.local.encoder2_switch.is_low().unwrap();
 
