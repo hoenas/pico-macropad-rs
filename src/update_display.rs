@@ -92,8 +92,8 @@ pub fn update_display(
         for col in 0..5 {
             let idx = row * 5 + col;
             let button = buttons[idx];
-            let x = (22 * col) as i32;
-            let y = 24 + (row * 20) as i32;
+            let x = (26 * col) as i32;
+            let y = 15 + (row * 24) as i32;
             let top_left = origin + Point::new(x, y);
             draw_button_cell(display, button, top_left);
         }
