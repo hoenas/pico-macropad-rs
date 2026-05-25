@@ -89,9 +89,29 @@ A</pre>
                 <div class="editor-container">
                     <div class="editor-preview">
                         <h3>Preview</h3>
-                        <canvas id="editor-canvas" width="22" height="22" class="editor-canvas"></canvas>
+                        <div class="editor-canvas-wrap">
+                            <canvas id="editor-canvas" width="22" height="22" class="editor-canvas"></canvas>
+                            <canvas id="editor-overlay" width="22" height="22"
+                                class="editor-canvas editor-overlay"></canvas>
+                        </div>
                     </div>
                     <div class="editor-controls">
+                        <div class="control-group">
+                            <label for="editor-tool-select">Tool</label>
+                            <select id="editor-tool-select">
+                                <option value="brush">Brush</option>
+                                <option value="text">Text</option>
+                                <option value="erase">Erase</option>
+                            </select>
+                        </div>
+                        <div class="control-group">
+                            <label for="editor-tool-size">Tool size: <span id="tool-size-value">1</span></label>
+                            <input id="editor-tool-size" type="range" min="1" max="11" value="1" />
+                        </div>
+                        <div class="control-group">
+                            <label for="editor-text-input">Text (for Text tool)</label>
+                            <input id="editor-text-input" type="text" placeholder="A" maxlength="4" />
+                        </div>
                         <div class="control-group">
                             <label for="editor-image-input">Load Image</label>
                             <input id="editor-image-input" type="file" accept="image/*" />
@@ -104,6 +124,8 @@ A</pre>
                             <button id="editor-invert-btn" type="button">Invert Colors</button>
                         </div>
                         <div class="editor-actions">
+                            <button id="editor-undo-btn" type="button" class="btn-secondary">Undo</button>
+                            <button id="editor-redo-btn" type="button" class="btn-secondary">Redo</button>
                             <button id="editor-confirm-btn" type="button" class="btn-primary">Apply</button>
                             <button id="editor-cancel-btn" type="button" class="btn-secondary">Cancel</button>
                         </div>

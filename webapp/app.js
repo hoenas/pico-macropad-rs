@@ -33,13 +33,76 @@ const elements = {
     editorInvertBtn: document.getElementById('editor-invert-btn'),
     editorConfirmBtn: document.getElementById('editor-confirm-btn'),
     editorCancelBtn: document.getElementById('editor-cancel-btn'),
+    editorOverlay: document.getElementById('editor-overlay'),
+    editorUndoBtn: document.getElementById('editor-undo-btn'),
+    editorRedoBtn: document.getElementById('editor-redo-btn'),
     modalClose: document.querySelector('.modal-close'),
+    editorToolSelect: document.getElementById('editor-tool-select'),
+    editorToolSize: document.getElementById('editor-tool-size'),
+    toolSizeValue: document.getElementById('tool-size-value'),
+    editorTextInput: document.getElementById('editor-text-input'),
 };
 
 const iconBlobs = new Map();
 let currentEditorFieldId = null;
 let currentEditorImage = null;
 let currentEditorInverted = false;
+let editorTool = 'brush';
+let editorToolSize = 1;
+let editorMouseDown = false;
+const undoStack = [];
+const redoStack = [];
+let pendingInitialPush = false;
+
+function pushState() {
+    if (!elements.editorCanvas) return;
+    const ctx = elements.editorCanvas.getContext('2d');
+    if (!ctx) return;
+    const imageData = ctx.getImageData(0, 0, 22, 22);
+    // store a copy
+    undoStack.push({ data: new Uint8ClampedArray(imageData.data), width: imageData.width, height: imageData.height });
+    // limit history
+    if (undoStack.length > 100) undoStack.shift();
+    // clear redo
+    redoStack.length = 0;
+    updateUndoRedoButtons();
+}
+
+function restoreState(state) {
+    if (!elements.editorCanvas || !state) return;
+    const ctx = elements.editorCanvas.getContext('2d');
+    if (!ctx) return;
+    const imageData = new ImageData(new Uint8ClampedArray(state.data), state.width, state.height);
+    ctx.putImageData(imageData, 0, 0);
+}
+
+function updateUndoRedoButtons() {
+    if (elements.editorUndoBtn) elements.editorUndoBtn.disabled = undoStack.length === 0;
+    if (elements.editorRedoBtn) elements.editorRedoBtn.disabled = redoStack.length === 0;
+}
+
+function doUndo() {
+    if (!elements.editorCanvas) return;
+    const ctx = elements.editorCanvas.getContext('2d');
+    if (!ctx || undoStack.length === 0) return;
+    // save current to redo
+    const current = ctx.getImageData(0, 0, 22, 22);
+    redoStack.push({ data: new Uint8ClampedArray(current.data), width: current.width, height: current.height });
+    const state = undoStack.pop();
+    restoreState(state);
+    updateUndoRedoButtons();
+}
+
+function doRedo() {
+    if (!elements.editorCanvas) return;
+    const ctx = elements.editorCanvas.getContext('2d');
+    if (!ctx || redoStack.length === 0) return;
+    const current = ctx.getImageData(0, 0, 22, 22);
+    undoStack.push({ data: new Uint8ClampedArray(current.data), width: current.width, height: current.height });
+    const state = redoStack.pop();
+    restoreState(state);
+    updateUndoRedoButtons();
+}
 
 function normalizeSdcardPath(path) {
     const cleaned = path.trim().replace(/^\/+|^\\+/, '');
@@ -430,6 +493,30 @@ function convertIconImage(img, threshold = 128, invert = false) {
     return { blob: new Blob([bytes], { type: 'image/bmp' }), bytes, pixels };
 }
 
+function convertCanvasToIconData(canvas, threshold = 128, invert = false) {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    const imageData = ctx.getImageData(0, 0, 22, 22);
+    const pixels = new Uint8Array(484);
+    const data = imageData.data;
+    for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+        let pixel = gray >= threshold ? 1 : 0;
+        if (invert) pixel = 1 - pixel;
+        const value = pixel ? 255 : 0;
+        data[i] = value;
+        data[i + 1] = value;
+        data[i + 2] = value;
+        pixels[i / 4] = pixel;
+    }
+    ctx.putImageData(imageData, 0, 0);
+    const bytes = createBmpBytes(22, 22, pixels);
+    return { blob: new Blob([bytes], { type: 'image/bmp' }), bytes, pixels };
+}
+
 function setFieldIcon(fieldId, file) {
     const reader = new FileReader();
     reader.onload = () => {
@@ -461,34 +548,46 @@ function closeIconEditor() {
 }
 
 function drawEditorPreview() {
-    if (!currentEditorImage || !elements.editorCanvas) {
-        return;
-    }
-    const threshold = parseInt(elements.editorThreshold.value, 10);
-    const iconData = convertIconImage(currentEditorImage, threshold, currentEditorInverted);
-    if (!iconData) {
-        return;
-    }
-
+    if (!elements.editorCanvas) return;
     const ctx = elements.editorCanvas.getContext('2d');
-    if (!ctx) {
-        return;
+    if (!ctx) return;
+    const threshold = parseInt(elements.editorThreshold.value, 10);
+    if (currentEditorImage) {
+        // Only for loaded images: show threshold/invert effect
+        ctx.clearRect(0, 0, 22, 22);
+        const iconData = convertIconImage(currentEditorImage, threshold, currentEditorInverted);
+        if (!iconData) return;
+        const img = new Image();
+        img.onload = () => {
+            ctx.drawImage(img, 0, 0, 22, 22);
+            URL.revokeObjectURL(img.src);
+            if (pendingInitialPush) {
+                pushState();
+                pendingInitialPush = false;
+            }
+        };
+        img.src = URL.createObjectURL(iconData.blob);
+    } else {
+        // For freehand drawing, do not clear or redraw canvas
+        if (pendingInitialPush) {
+            pushState();
+            pendingInitialPush = false;
+        }
     }
-
-    const img = new Image();
-    img.onload = () => {
-        ctx.drawImage(img, 0, 0, 22, 22);
-    };
-    img.src = URL.createObjectURL(iconData.blob);
 }
 
+
+
 function confirmIconEdit() {
-    if (!currentEditorFieldId || !currentEditorImage) {
-        return;
-    }
+    if (!currentEditorFieldId) return;
 
     const threshold = parseInt(elements.editorThreshold.value, 10);
-    const iconData = convertIconImage(currentEditorImage, threshold, currentEditorInverted);
+    let iconData = null;
+    if (currentEditorImage) {
+        iconData = convertIconImage(currentEditorImage, threshold, currentEditorInverted);
+    } else {
+        iconData = convertCanvasToIconData(elements.editorCanvas, threshold, currentEditorInverted);
+    }
     if (!iconData) {
         showFeedback('Failed to convert icon image.', 'error');
         closeIconEditor();
@@ -502,11 +601,11 @@ function confirmIconEdit() {
         pathInput.value = defaultPath;
     }
 
-    iconBlobs.set(currentEditorFieldId, { 
-        blob: iconData.blob, 
-        bytes: iconData.bytes, 
-        pixels: iconData.pixels, 
-        name: fileName 
+    iconBlobs.set(currentEditorFieldId, {
+        blob: iconData.blob,
+        bytes: iconData.bytes,
+        pixels: iconData.pixels,
+        name: fileName
     });
     setFieldIconPreview(currentEditorFieldId, iconData.blob);
     const downloadBtn = document.getElementById(`${currentEditorFieldId}-icon-download`);
@@ -546,10 +645,7 @@ function createButtonCard(field) {
         <div class="card">
             <h3>${field.title}</h3>
             ${createTextInput(`${field.id}-text`, 'Display text', 'Label or name')}
-            <label class="icon-input-label">
-                Choose icon
-                <input id="${field.id}-icon-file" class="field-icon-file" type="file" accept="image/*" />
-            </label>
+            <!-- icon file input removed; use Edit in editor to draw or load -->
             <div class="button-icon-row">
                 <canvas id="${field.id}-icon-preview" class="button-icon-preview" width="22" height="22"></canvas>
                 <button id="${field.id}-icon-edit" class="icon-edit-btn" type="button">Edit</button>
@@ -576,10 +672,7 @@ function createEncoderCard(field) {
         <div class="card">
             <h3>${field.title}</h3>
             ${createTextInput(`${field.id}-text`, 'Display text', 'Label or name')}
-            <label class="icon-input-label">
-                Choose icon
-                <input id="${field.id}-icon-file" class="field-icon-file" type="file" accept="image/*" />
-            </label>
+            <!-- icon file input removed; use Edit in editor to draw or load -->
             <div class="button-icon-row">
                 <canvas id="${field.id}-icon-preview" class="button-icon-preview" width="22" height="22"></canvas>
                 <button id="${field.id}-icon-edit" class="icon-edit-btn" type="button">Edit</button>
@@ -621,39 +714,49 @@ function formatKeystrokes(chords) {
 function buildConfig() {
     const config = {
         name: elements.configName.value.trim(),
+        buttons: [],
+        menu_encoder: {},
+        encoders: [],
+        leds: []
     };
 
+    // Buttons -> array in order
     buttonFields.forEach(field => {
         const text = document.getElementById(`${field.id}-text`).value.trim();
         const keystrokes = parseKeystrokes(document.getElementById(`${field.id}-keystrokes`).value);
-
-        const buttonConfig = {
+        const btn = {
             display_text: text,
             keystroke: keystrokes,
         };
         const icon = iconBlobs.get(field.id);
-        if (icon) {
-            buttonConfig.display_icon = icon.bytes;
-        }
-        config[field.id] = buttonConfig;
+        if (icon) btn.display_icon = icon.bytes;
+        config.buttons.push(btn);
     });
 
-    encoderFields.forEach(field => {
-        const text = document.getElementById(`${field.id}-text`).value.trim();
-        const encoderConfig = {
-            display_text: text,
+    // menu_encoder is the first encoderFields entry (menu_encoder)
+    const menuField = encoderFields[0];
+    const menuText = document.getElementById(`${menuField.id}-text`).value.trim();
+    const menu = {
+        display_text: menuText,
+        keystroke_left: parseKeystrokes(document.getElementById(`${menuField.id}-left-keystrokes`).value),
+        keystroke_right: parseKeystrokes(document.getElementById(`${menuField.id}-right-keystrokes`).value),
+    };
+    const menuIcon = iconBlobs.get(menuField.id);
+    if (menuIcon) menu.display_icon = menuIcon.bytes;
+    config.menu_encoder = menu;
+
+    // encoders: remaining encoderFields (encoder1, encoder2)
+    encoderFields.slice(1).forEach(field => {
+        const encText = document.getElementById(`${field.id}-text`).value.trim();
+        const enc = {
+            display_text: encText,
+            keystroke_left: parseKeystrokes(document.getElementById(`${field.id}-left-keystrokes`).value),
+            keystroke_right: parseKeystrokes(document.getElementById(`${field.id}-right-keystrokes`).value),
+            keystroke_push: parseKeystrokes(document.getElementById(`${field.id}-push-keystrokes`).value)
         };
-
-        const icon = iconBlobs.get(field.id);
-        if (icon) {
-            encoderConfig.display_icon = icon.bytes;
-        }
-
-        field.types.forEach(type => {
-            encoderConfig[`keystroke_${type}`] = parseKeystrokes(document.getElementById(`${field.id}-${type}-keystrokes`).value);
-        });
-
-        config[field.id] = encoderConfig;
+        const encIcon = iconBlobs.get(field.id);
+        if (encIcon) enc.display_icon = encIcon.bytes;
+        config.encoders.push(enc);
     });
 
     config.leds = Array.from({ length: 8 }, (_, idx) => {
@@ -670,9 +773,9 @@ function buildConfig() {
 function updateDisplayPreview(config) {
     let html = `<div class="display-name">${config.name || 'Unnamed'}</div>`;
     html += '<div class="display-buttons">';
-
-    buttonFields.forEach(field => {
-        const btn = config[field.id];
+    const buttons = Array.isArray(config.buttons) ? config.buttons : [];
+    buttonFields.forEach((field, idx) => {
+        const btn = buttons[idx] || {};
         const icon = iconBlobs.get(field.id);
         if (icon) {
             html += `<div class="display-button"><canvas class="display-icon-canvas" id="display-preview-${field.id}" width="22" height="22"></canvas></div>`;
@@ -718,67 +821,98 @@ function validateConfig(config) {
     if (!config.name || typeof config.name !== 'string') {
         errors.push('Config name must be a non-empty string.');
     }
-
-    buttonFields.forEach((field, index) => {
-        const btn = config[field.id];
-        if (!btn || typeof btn !== 'object') {
-            errors.push(`Button ${index + 1}: Invalid structure.`);
-            return;
-        }
-        if (typeof btn.display_text !== 'string') {
-            errors.push(`Button ${index + 1}: display_text must be a string.`);
-        }
-        if (btn.display_icon != null && !(btn.display_icon instanceof Uint8Array || (Array.isArray(btn.display_icon) && btn.display_icon.every(byte => typeof byte === 'number' && Number.isInteger(byte) && byte >= 0 && byte <= 255)))) {
-            errors.push(`Button ${index + 1}: display_icon must be a byte array or Uint8Array.`);
-        }
-        if (!Array.isArray(btn.keystroke)) {
-            errors.push(`Button ${index + 1}: keystroke must be an array.`);
-        } else {
-            btn.keystroke.forEach((chord, chordIndex) => {
-                if (!Array.isArray(chord)) {
-                    errors.push(`Button ${index + 1}: keystroke[${chordIndex}] must be an array.`);
-                } else {
-                    chord.forEach(key => {
-                        if (!KEY_CODES.includes(key)) {
-                            errors.push(`Button ${index + 1}: Invalid key '${key}' in keystroke.`);
-                        }
-                    });
-                }
-            });
-        }
-    });
-
-    encoderFields.forEach(field => {
-        const enc = config[field.id];
-        if (!enc || typeof enc !== 'object') {
-            errors.push(`${field.title}: Invalid structure.`);
-            return;
-        }
-        if (typeof enc.display_text !== 'string') {
-            errors.push(`${field.title}: display_text must be a string.`);
-        }
-        if (enc.display_icon != null && !(enc.display_icon instanceof Uint8Array || (Array.isArray(enc.display_icon) && enc.display_icon.every(byte => typeof byte === 'number' && Number.isInteger(byte) && byte >= 0 && byte <= 255)))) {
-            errors.push(`${field.title}: display_icon must be a byte array or Uint8Array.`);
-        }
-        field.types.forEach(type => {
-            const dir = enc[`keystroke_${type}`];
-            if (!Array.isArray(dir)) {
-                errors.push(`${field.title}: keystroke_${type} must be an array.`);
+    // Buttons array
+    if (!Array.isArray(config.buttons) || config.buttons.length !== buttonFields.length) {
+        errors.push(`Buttons must be an array of ${buttonFields.length} entries.`);
+    } else {
+        config.buttons.forEach((btn, index) => {
+            if (!btn || typeof btn !== 'object') {
+                errors.push(`Button ${index + 1}: Invalid structure.`);
+                return;
+            }
+            if (typeof btn.display_text !== 'string') {
+                errors.push(`Button ${index + 1}: display_text must be a string.`);
+            }
+            if (btn.display_icon != null && !(btn.display_icon instanceof Uint8Array || (Array.isArray(btn.display_icon) && btn.display_icon.every(byte => typeof byte === 'number' && Number.isInteger(byte) && byte >= 0 && byte <= 255)))) {
+                errors.push(`Button ${index + 1}: display_icon must be a byte array or Uint8Array.`);
+            }
+            if (!Array.isArray(btn.keystroke)) {
+                errors.push(`Button ${index + 1}: keystroke must be an array.`);
             } else {
-                dir.forEach((chord, chordIndex) => {
+                btn.keystroke.forEach((chord, chordIndex) => {
                     if (!Array.isArray(chord)) {
-                        errors.push(`${field.title}: keystroke_${type}[${chordIndex}] must be an array.`);
+                        errors.push(`Button ${index + 1}: keystroke[${chordIndex}] must be an array.`);
                     } else {
                         chord.forEach(key => {
                             if (!KEY_CODES.includes(key)) {
-                                errors.push(`${field.title}: Invalid key '${key}' in keystroke_${type}.`);
+                                errors.push(`Button ${index + 1}: Invalid key '${key}' in keystroke.`);
                             }
                         });
                     }
                 });
             }
         });
-    });
+    }
+
+    // menu_encoder
+    const menu = config.menu_encoder;
+    if (!menu || typeof menu !== 'object') {
+        errors.push(`Menu encoder: Invalid structure.`);
+    } else {
+        if (typeof menu.display_text !== 'string') {
+            errors.push(`Menu encoder: display_text must be a string.`);
+        }
+        if (menu.display_icon != null && !(menu.display_icon instanceof Uint8Array || (Array.isArray(menu.display_icon) && menu.display_icon.every(byte => typeof byte === 'number' && Number.isInteger(byte) && byte >= 0 && byte <= 255)))) {
+            errors.push(`Menu encoder: display_icon must be a byte array or Uint8Array.`);
+        }
+        [['left', 'keystroke_left'], ['right', 'keystroke_right']].forEach(([label, key]) => {
+            const dir = menu[key];
+            if (!Array.isArray(dir)) {
+                errors.push(`Menu encoder: ${key} must be an array.`);
+            } else {
+                dir.forEach((chord, chordIndex) => {
+                    if (!Array.isArray(chord)) {
+                        errors.push(`Menu encoder: ${key}[${chordIndex}] must be an array.`);
+                    } else {
+                        chord.forEach(k => { if (!KEY_CODES.includes(k)) errors.push(`Menu encoder: Invalid key '${k}' in ${key}.`); });
+                    }
+                });
+            }
+        });
+    }
+
+    // encoders array
+    if (!Array.isArray(config.encoders) || config.encoders.length !== 2) {
+        errors.push('Encoders must be an array of 2 entries.');
+    } else {
+        config.encoders.forEach((enc, idx) => {
+            const title = `Encoder ${idx + 1}`;
+            if (!enc || typeof enc !== 'object') {
+                errors.push(`${title}: Invalid structure.`);
+                return;
+            }
+            if (typeof enc.display_text !== 'string') {
+                errors.push(`${title}: display_text must be a string.`);
+            }
+            if (enc.display_icon != null && !(enc.display_icon instanceof Uint8Array || (Array.isArray(enc.display_icon) && enc.display_icon.every(byte => typeof byte === 'number' && Number.isInteger(byte) && byte >= 0 && byte <= 255)))) {
+                errors.push(`${title}: display_icon must be a byte array or Uint8Array.`);
+            }
+            [['left', 'keystroke_left'], ['right', 'keystroke_right'], ['push', 'keystroke_push']].forEach(([label, key]) => {
+                const dir = enc[key];
+                if (!Array.isArray(dir)) {
+                    errors.push(`${title}: ${key} must be an array.`);
+                } else {
+                    dir.forEach((chord, chordIndex) => {
+                        if (!Array.isArray(chord)) {
+                            errors.push(`${title}: ${key}[${chordIndex}] must be an array.`);
+                        } else {
+                            chord.forEach(k => { if (!KEY_CODES.includes(k)) errors.push(`${title}: Invalid key '${k}' in ${key}.`); });
+                        }
+                    });
+                }
+            });
+        });
+    }
 
     if (!Array.isArray(config.leds) || config.leds.length !== 8) {
         errors.push('LEDs must be an array of 8 objects.');
@@ -905,9 +1039,10 @@ function loadCfg() {
 function loadConfigIntoForm(config) {
     iconBlobs.clear();
     elements.configName.value = config.name || '';
-
-    buttonFields.forEach(field => {
-        const btn = config[field.id] || {};
+    // Buttons array
+    const buttons = Array.isArray(config.buttons) ? config.buttons : [];
+    buttonFields.forEach((field, idx) => {
+        const btn = buttons[idx] || {};
         document.getElementById(`${field.id}-text`).value = btn.display_text || '';
 
         const btnIconBytes = btn.display_icon instanceof Uint8Array ? btn.display_icon : Array.isArray(btn.display_icon) ? Uint8Array.from(btn.display_icon) : null;
@@ -916,44 +1051,54 @@ function loadConfigIntoForm(config) {
             iconBlobs.set(field.id, { blob: bmpBlob, bytes: btnIconBytes, name: `${field.id}.bmp` });
             setFieldIconPreview(field.id, bmpBlob);
             const downloadBtn = document.getElementById(`${field.id}-icon-download`);
-            if (downloadBtn instanceof HTMLButtonElement) {
-                downloadBtn.disabled = false;
-            }
+            if (downloadBtn instanceof HTMLButtonElement) downloadBtn.disabled = false;
         } else {
             setFieldIconPreview(field.id, null);
             const downloadBtn = document.getElementById(`${field.id}-icon-download`);
-            if (downloadBtn instanceof HTMLButtonElement) {
-                downloadBtn.disabled = true;
-            }
+            if (downloadBtn instanceof HTMLButtonElement) downloadBtn.disabled = true;
         }
 
         document.getElementById(`${field.id}-keystrokes`).value = formatKeystrokes(btn.keystroke || []);
     });
 
-    encoderFields.forEach(field => {
-        const enc = config[field.id] || {};
-        document.getElementById(`${field.id}-text`).value = enc.display_text || '';
+    // Encoders: menu_encoder + encoders array
+    const menu = config.menu_encoder || {};
+    const menuField = encoderFields[0];
+    document.getElementById(`${menuField.id}-text`).value = menu.display_text || '';
+    const menuIconBytes = menu.display_icon instanceof Uint8Array ? menu.display_icon : Array.isArray(menu.display_icon) ? Uint8Array.from(menu.display_icon) : null;
+    if (menuIconBytes && menuIconBytes.length > 0) {
+        const bmpBlob = new Blob([menuIconBytes], { type: 'image/bmp' });
+        iconBlobs.set(menuField.id, { blob: bmpBlob, bytes: menuIconBytes, name: `${menuField.id}.bmp` });
+        setFieldIconPreview(menuField.id, bmpBlob);
+        const downloadBtn = document.getElementById(`${menuField.id}-icon-download`);
+        if (downloadBtn instanceof HTMLButtonElement) downloadBtn.disabled = false;
+    } else {
+        setFieldIconPreview(menuField.id, null);
+        const downloadBtn = document.getElementById(`${menuField.id}-icon-download`);
+        if (downloadBtn instanceof HTMLButtonElement) downloadBtn.disabled = true;
+    }
+    document.getElementById(`${menuField.id}-left-keystrokes`).value = formatKeystrokes(menu.keystroke_left || []);
+    document.getElementById(`${menuField.id}-right-keystrokes`).value = formatKeystrokes(menu.keystroke_right || []);
 
+    const encs = Array.isArray(config.encoders) ? config.encoders : [];
+    encoderFields.slice(1).forEach((field, idx) => {
+        const enc = encs[idx] || {};
+        document.getElementById(`${field.id}-text`).value = enc.display_text || '';
         const encIconBytes = enc.display_icon instanceof Uint8Array ? enc.display_icon : Array.isArray(enc.display_icon) ? Uint8Array.from(enc.display_icon) : null;
         if (encIconBytes && encIconBytes.length > 0) {
             const bmpBlob = new Blob([encIconBytes], { type: 'image/bmp' });
             iconBlobs.set(field.id, { blob: bmpBlob, bytes: encIconBytes, name: `${field.id}.bmp` });
             setFieldIconPreview(field.id, bmpBlob);
             const downloadBtn = document.getElementById(`${field.id}-icon-download`);
-            if (downloadBtn instanceof HTMLButtonElement) {
-                downloadBtn.disabled = false;
-            }
+            if (downloadBtn instanceof HTMLButtonElement) downloadBtn.disabled = false;
         } else {
             setFieldIconPreview(field.id, null);
             const downloadBtn = document.getElementById(`${field.id}-icon-download`);
-            if (downloadBtn instanceof HTMLButtonElement) {
-                downloadBtn.disabled = true;
-            }
+            if (downloadBtn instanceof HTMLButtonElement) downloadBtn.disabled = true;
         }
-
-        field.types.forEach(type => {
-            document.getElementById(`${field.id}-${type}-keystrokes`).value = formatKeystrokes(enc[`keystroke_${type}`] || []);
-        });
+        document.getElementById(`${field.id}-left-keystrokes`).value = formatKeystrokes(enc.keystroke_left || []);
+        document.getElementById(`${field.id}-right-keystrokes`).value = formatKeystrokes(enc.keystroke_right || []);
+        document.getElementById(`${field.id}-push-keystrokes`).value = formatKeystrokes(enc.keystroke_push || []);
     });
 
     if (Array.isArray(config.leds)) {
@@ -1052,6 +1197,53 @@ function collectIconFile(fieldId) {
 render();
 loadExampleConfig();
 
+// Attach direct handlers to dynamically created icon inputs and edit buttons
+function attachIconInputHandlers() {
+    document.querySelectorAll('.field-icon-file').forEach(input => {
+        if (!(input instanceof HTMLInputElement)) return;
+        // avoid double-listening
+        if (input.__icon_handler_attached) return;
+        input.addEventListener('change', () => {
+            const fieldId = input.id.replace(/-icon-file$/, '');
+            collectIconFile(fieldId);
+        });
+        input.__icon_handler_attached = true;
+    });
+
+    document.querySelectorAll('.icon-edit-btn').forEach(btn => {
+        if (!(btn instanceof HTMLElement)) return;
+        if (btn.__edit_handler_attached) return;
+        btn.addEventListener('click', () => {
+            const fieldId = btn.id.replace(/-icon-edit$/, '');
+            const icon = iconBlobs.get(fieldId);
+            currentEditorFieldId = fieldId;
+            currentEditorInverted = false;
+            if (elements.editorThreshold) elements.editorThreshold.value = 128;
+            if (elements.thresholdValue) elements.thresholdValue.textContent = 128;
+            if (elements.editorImageInput) elements.editorImageInput.value = '';
+            elements.editorInvertBtn && (elements.editorInvertBtn.textContent = 'Invert Colors');
+            if (icon) {
+                const blob = icon.blob;
+                const img = new Image();
+                img.onload = () => {
+                    currentEditorImage = img;
+                    drawEditorPreview();
+                    openIconEditor();
+                };
+                img.src = URL.createObjectURL(blob);
+            } else {
+                // start with blank canvas
+                currentEditorImage = null;
+                drawEditorPreview();
+                openIconEditor();
+            }
+        });
+        btn.__edit_handler_attached = true;
+    });
+}
+
+attachIconInputHandlers();
+
 // Modal event listeners
 elements.modalClose.addEventListener('click', closeIconEditor);
 elements.iconEditorModal.addEventListener('click', (event) => {
@@ -1075,6 +1267,8 @@ elements.editorInvertBtn.addEventListener('click', () => {
 elements.editorImageInput.addEventListener('change', (event) => {
     const file = event.target.files?.[0];
     if (file) {
+        // capture current canvas state before loading new image
+        pushState();
         const reader = new FileReader();
         reader.onload = () => {
             const image = new Image();
@@ -1091,6 +1285,147 @@ elements.editorImageInput.addEventListener('change', (event) => {
         reader.readAsDataURL(file);
     }
 });
+
+// Editor tool controls
+if (elements.editorToolSelect) {
+    elements.editorToolSelect.addEventListener('change', (e) => {
+        editorTool = e.target.value;
+    });
+}
+if (elements.editorToolSize) {
+    elements.editorToolSize.addEventListener('input', (e) => {
+        editorToolSize = parseInt(e.target.value, 10) || 1;
+        if (elements.toolSizeValue) elements.toolSizeValue.textContent = String(editorToolSize);
+    });
+}
+
+function canvasPosToPixel(ev) {
+    const rect = elements.editorCanvas.getBoundingClientRect();
+    const scaleX = 22 / rect.width;
+    const scaleY = 22 / rect.height;
+    const x = Math.floor((ev.clientX - rect.left) * scaleX);
+    const y = Math.floor((ev.clientY - rect.top) * scaleY);
+    return { x: Math.max(0, Math.min(21, x)), y: Math.max(0, Math.min(21, y)) };
+}
+
+function drawAtPixel(x, y, mode = 'brush') {
+    const ctx = elements.editorCanvas.getContext('2d');
+    if (!ctx) return;
+    const half = Math.floor(editorToolSize / 2);
+    // brush draws black on white background; erase restores white
+    ctx.fillStyle = mode === 'erase' ? '#ffffff' : '#000000';
+    for (let dy = -half; dy <= half; dy++) {
+        for (let dx = -half; dx <= half; dx++) {
+            const px = x + dx;
+            const py = y + dy;
+            if (px >= 0 && px < 22 && py >= 0 && py < 22) {
+                ctx.fillRect(px, py, 1, 1);
+            }
+        }
+    }
+}
+
+elements.editorCanvas.addEventListener('mousedown', (ev) => {
+    ev.preventDefault();
+    editorMouseDown = true;
+    // capture state for undo before the first modification
+    pushState();
+    const p = canvasPosToPixel(ev);
+    if (editorTool === 'text') {
+        const txt = elements.editorTextInput.value || '';
+        if (txt) {
+            const ctx = elements.editorCanvas.getContext('2d');
+            ctx.fillStyle = '#000000';
+            const fontSize = Math.max(8, editorToolSize * 2);
+            ctx.font = `${fontSize}px sans-serif`;
+            ctx.textBaseline = 'middle';
+            ctx.textAlign = 'center';
+            ctx.fillText(txt, p.x + 0.5, p.y + 0.5);
+        }
+    } else {
+        drawAtPixel(p.x, p.y, editorTool === 'erase' ? 'erase' : 'brush');
+    }
+    clearOverlay();
+});
+
+function clearOverlay() {
+    if (!elements.editorOverlay) return;
+    const ctx = elements.editorOverlay.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, 22, 22);
+}
+
+function drawPreviewAtPixel(x, y) {
+    if (!elements.editorOverlay) return;
+    const ctx = elements.editorOverlay.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, 22, 22);
+    const half = Math.floor(editorToolSize / 2);
+    if (editorTool === 'text') {
+        const txt = elements.editorTextInput.value || 'A';
+        ctx.fillStyle = 'rgba(0,0,0,0.8)';
+        const fontSize = Math.max(8, editorToolSize * 2);
+        ctx.font = `${fontSize}px sans-serif`;
+        ctx.textBaseline = 'middle';
+        ctx.textAlign = 'center';
+        ctx.fillText(txt, x + 0.5, y + 0.5);
+    } else {
+        // draw affected pixels box
+        ctx.fillStyle = editorTool === 'erase' ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)';
+        for (let dy = -half; dy <= half; dy++) {
+            for (let dx = -half; dx <= half; dx++) {
+                const px = x + dx;
+                const py = y + dy;
+                if (px >= 0 && px < 22 && py >= 0 && py < 22) {
+                    ctx.fillRect(px, py, 1, 1);
+                }
+            }
+        }
+    }
+}
+
+elements.editorCanvas.addEventListener('mousemove', (ev) => {
+    const p = canvasPosToPixel(ev);
+    // always show preview
+    drawPreviewAtPixel(p.x, p.y);
+    if (!editorMouseDown) return;
+    if (editorTool !== 'text') {
+        drawAtPixel(p.x, p.y, editorTool === 'erase' ? 'erase' : 'brush');
+        clearOverlay();
+    }
+});
+
+elements.editorCanvas.addEventListener('mouseout', () => {
+    clearOverlay();
+});
+
+window.addEventListener('mouseup', () => {
+    if (editorMouseDown) {
+        editorMouseDown = false;
+    }
+});
+
+// Initialize canvas when opening editor without a loaded image
+const originalOpenIconEditor = openIconEditor;
+openIconEditor = function () {
+    originalOpenIconEditor();
+    const ctx = elements.editorCanvas.getContext('2d');
+    if (!ctx) return;
+    if (!currentEditorImage) {
+        // fill with white background by default
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, 22, 22);
+    }
+    // ensure displayed preview matches canvas state
+    drawEditorPreview();
+    // capture initial state for undo/redo after drawing completes
+    pendingInitialPush = true;
+};
+
+// wire undo/redo buttons
+if (elements.editorUndoBtn) elements.editorUndoBtn.addEventListener('click', doUndo);
+if (elements.editorRedoBtn) elements.editorRedoBtn.addEventListener('click', doRedo);
+updateUndoRedoButtons();
 
 elements.editorConfirmBtn.addEventListener('click', confirmIconEdit);
 elements.editorCancelBtn.addEventListener('click', closeIconEditor);
@@ -1120,24 +1455,27 @@ document.addEventListener('click', event => {
     if (target.classList.contains('icon-edit-btn')) {
         const fieldId = target.id.replace(/-icon-edit$/, '');
         const icon = iconBlobs.get(fieldId);
+        currentEditorFieldId = fieldId;
+        currentEditorInverted = false;
+        elements.editorThreshold.value = 128;
+        elements.thresholdValue.textContent = 128;
+        elements.editorImageInput.value = '';
+        elements.editorInvertBtn.textContent = 'Invert Colors';
         if (icon) {
-            // Load the existing icon into the editor
+            // load existing icon image into editor
             const blob = icon.blob;
             const img = new Image();
             img.onload = () => {
-                currentEditorFieldId = fieldId;
                 currentEditorImage = img;
-                currentEditorInverted = false;
-                elements.editorThreshold.value = 128;
-                elements.thresholdValue.textContent = 128;
-                elements.editorImageInput.value = '';
-                elements.editorInvertBtn.textContent = 'Invert Colors';
                 drawEditorPreview();
                 openIconEditor();
             };
             img.src = URL.createObjectURL(blob);
         } else {
-            showFeedback('Please load an icon first.', 'info');
+            // no icon: start with blank canvas (openIconEditor will initialize canvas)
+            currentEditorImage = null;
+            drawEditorPreview();
+            openIconEditor();
         }
     }
 });

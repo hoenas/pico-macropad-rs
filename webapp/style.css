@@ -414,12 +414,27 @@ button.secondary {
     font-size: 0.95rem;
 }
 
+.editor-canvas-wrap {
+    position: relative;
+}
+
 .editor-canvas {
     width: 220px;
     height: 220px;
     border: 2px solid #333;
     background: #fff;
     image-rendering: pixelated;
+    display: block;
+}
+
+.editor-overlay {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 220px;
+    height: 220px;
+    pointer-events: none;
+    z-index: 2;
 }
 
 .editor-controls {
