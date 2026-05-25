@@ -5,7 +5,7 @@ use embedded_sdmmc::{BlockDevice, Directory, ShortFileName, TimeSource};
 use crate::MacroConfig;
 
 const LAST_CONFIG_FILE_NAME: &str = "lastcfg";
-const FILE_READ_BUFFER_SIZE: usize = 4096;
+const FILE_READ_BUFFER_SIZE: usize = 8196;
 
 pub fn read_file(
     root_dir: &Directory<'_, impl BlockDevice, impl TimeSource, 4, 4, 1>,
