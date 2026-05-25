@@ -19,7 +19,7 @@
             buildInputs = with pkgs; [
               (rust-bin.stable.latest.default.override {
                 extensions = [ "rust-src" ];
-                targets = [ "thumbv6m-none-eabi" ];
+                targets = [ "thumbv6m-none-eabi" "wasm32-unknown-unknown" ];
               })
             ] ++  [
               openocd
