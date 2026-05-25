@@ -11,6 +11,7 @@
           overlays = [ (import rust-overlay) ];
           pkgs = import nixpkgs {
             inherit system overlays;
+	    config.allowUnfree = true;
           };
         in
         with pkgs;
@@ -29,6 +30,8 @@
               probe-rs-tools
               elf2uf2-rs
               imagemagick
+              wasm-pack
+              claude-code
             ];
           };
         }

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Macropad Web App</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <div class="header-left">
+      <h1>Macropad Web App</h1>
+      <p>Create, import, edit and export a macropad configuration.</p>
+    </div>
+    <div class="header-actions">
+      <button id="newConfigButton">New Config</button>
+      <button id="importButton">Import Config</button>
+      <button id="exportButton">Export Config</button>
+      <input type="file" id="configFileInput" accept=".cbor" hidden />
+    </div>
+  </header>
+
+  <section class="overview">
+    <img src="panel_overview.png" alt="Panel overview" />
+  </section>
+
+  <main>
+    <div class="editor-grid" id="editorGrid"></div>
+  </main>
+
+  <div class="modal" id="iconEditorModal" aria-hidden="true">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Icon Editor</h2>
+        <button id="closeIconEditor">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="icon-editor-canvas">
+          <canvas id="editorCanvas" width="220" height="220"></canvas>
+          <div class="preview-panel">
+            <div class="preview-label">Preview</div>
+            <canvas id="previewCanvas" width="22" height="22"></canvas>
+          </div>
+        </div>
+        <div class="editor-controls">
+          <div class="control-row">
+            <label>Tool</label>
+            <select id="toolSelect">
+              <option value="brush">Brush</option>
+              <option value="text">Text</option>
+            </select>
+          </div>
+          <div class="control-row">
+            <label>Color</label>
+            <select id="colorSelect">
+              <option value="white" selected>White</option>
+              <option value="black">Black</option>
+            </select>
+          </div>
+          <div class="control-row">
+            <label>Brush size</label>
+            <select id="brushSizeSelect">
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+            </select>
+          </div>
+          <div class="control-row text-tool-row">
+            <label>Text</label>
+            <input type="text" id="textInput" maxlength="2" placeholder="AB" />
+          </div>
+          <div class="control-row">
+            <button id="fillCanvas">Fill</button>
+            <button id="clearCanvas">Clear</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="saveIconButton">Save Icon</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="src/app.js"></script>
+</body>
+</html>
