@@ -107,7 +107,7 @@ mod app {
     const KEYBOARD_UPDATE_MILIS: usize = 25;
     const KEYBOARD_UPDATE: MicrosDurationU32 =
         MicrosDurationU32::millis(KEYBOARD_UPDATE_MILIS as u32);
-    const TEXT_ROTATION_DOWNSAMPLING_FACTOR: usize = 8;
+    const TEXT_ROTATION_DOWNSAMPLING_FACTOR: usize = 4;
 
     #[shared]
     struct Shared {
