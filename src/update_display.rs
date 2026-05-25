@@ -92,17 +92,8 @@ pub fn update_display(
     rotation_counter: usize,
 ) {
     display.clear();
-    Text::with_alignment(
-        config.name.rotate(rotation_counter, 21).as_str(),
-        display.bounding_box().top_left + Point::new(0, 10),
-        CHARACTER_STYLE,
-        Alignment::Left,
-    )
-    .draw(display)
-    .unwrap();
-
     let origin = display.bounding_box().top_left;
-    // Draw other encoders
+    // Draw standard encoders
     for (i, encoder) in config.encoders.iter().enumerate() {
         let x = (26 * i) as i32;
         let top_left = origin + Point::new(x, 0);
