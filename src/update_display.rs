@@ -65,18 +65,6 @@ pub fn update_display(
     )
     .draw(display)
     .unwrap();
-    let buttons = [
-        &config.button0,
-        &config.button1,
-        &config.button2,
-        &config.button3,
-        &config.button4,
-        &config.button5,
-        &config.button6,
-        &config.button7,
-        &config.button8,
-        &config.button9,
-    ];
 
     let origin = display.bounding_box().top_left;
     Text::with_alignment(
@@ -91,7 +79,7 @@ pub fn update_display(
     for row in 0..2 {
         for col in 0..5 {
             let idx = row * 5 + col;
-            let button = buttons[idx];
+            let button = &config.buttons[idx];
             let x = (26 * col) as i32;
             let y = 15 + (row * 24) as i32;
             let top_left = origin + Point::new(x, y);
