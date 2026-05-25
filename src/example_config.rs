@@ -3,7 +3,7 @@ use alloc::vec;
 use crate::*;
 pub fn get_example_config() -> MacroConfig {
     MacroConfig {
-        name: "example".into(),
+        name: "Example Config".into(),
         buttons: [
             ButtonConfig {
                 display_text: String::from("A Macro Pad"),

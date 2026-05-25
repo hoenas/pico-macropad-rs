@@ -99,8 +99,17 @@ pub fn update_display(
         let top_left = origin + Point::new(x, 0);
         draw_icon_cell(display, encoder.get_draw_data(), top_left, rotation_counter);
     }
+    // Draw config title
+    Text::with_alignment(
+        config.name.rotate(rotation_counter, 7).as_str(),
+        origin + Point::new(73, 12),
+        CHARACTER_STYLE,
+        Alignment::Center,
+    )
+    .draw(display)
+    .unwrap();
     // Draw menu encoder
-    let x = (26 * 5) as i32;
+    let x = (26 * 4) as i32;
     let top_left = origin + Point::new(x, 0);
     draw_icon_cell(
         display,
