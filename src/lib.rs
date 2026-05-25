@@ -14,19 +14,9 @@ pub const NUM_LEDS: usize = 8;
 #[derive(serde::Deserialize, serde::Serialize, Clone, Default)]
 pub struct MacroConfig {
     pub name: String,
-    pub button0: ButtonConfig,
-    pub button1: ButtonConfig,
-    pub button2: ButtonConfig,
-    pub button3: ButtonConfig,
-    pub button4: ButtonConfig,
-    pub button5: ButtonConfig,
-    pub button6: ButtonConfig,
-    pub button7: ButtonConfig,
-    pub button8: ButtonConfig,
-    pub button9: ButtonConfig,
+    pub buttons: [ButtonConfig; 10],
     pub menu_encoder: MenuEncoderConfig,
-    pub encoder1: EncoderConfig,
-    pub encoder2: EncoderConfig,
+    pub encoders: [EncoderConfig; 2],
     pub leds: [LedConfig; NUM_LEDS],
 }
 

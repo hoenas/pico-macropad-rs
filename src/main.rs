@@ -635,37 +635,11 @@ mod app {
                 |buttons, encoders, config| {
                     // If any button or rotary encoder is pressed/rotated, we set the current keystroke to the corresponding keystroke from the config,
                     // which will then be sent to the host in the next iterations of this task until all keystrokes have been sent.
-                    // We need to reverse the order here once in order for the keystrokes to be sent in the correct order,
-                    //since we pop keystrokes from the back of the vector in the sending logic above.
-                    if buttons.pad0.pressed {
-                        *c.local.current_keystroke = config.button0.keystroke.clone();
-                    }
-                    if buttons.pad1.pressed {
-                        *c.local.current_keystroke = config.button1.keystroke.clone();
-                    }
-                    if buttons.pad2.pressed {
-                        *c.local.current_keystroke = config.button2.keystroke.clone();
-                    }
-                    if buttons.pad3.pressed {
-                        *c.local.current_keystroke = config.button3.keystroke.clone();
-                    }
-                    if buttons.pad4.pressed {
-                        *c.local.current_keystroke = config.button4.keystroke.clone();
-                    }
-                    if buttons.pad5.pressed {
-                        *c.local.current_keystroke = config.button5.keystroke.clone();
-                    }
-                    if buttons.pad6.pressed {
-                        *c.local.current_keystroke = config.button6.keystroke.clone();
-                    }
-                    if buttons.pad7.pressed {
-                        *c.local.current_keystroke = config.button7.keystroke.clone();
-                    }
-                    if buttons.pad8.pressed {
-                        *c.local.current_keystroke = config.button8.keystroke.clone();
-                    }
-                    if buttons.pad9.pressed {
-                        *c.local.current_keystroke = config.button9.keystroke.clone();
+                    for index in 0..config.buttons.len() {
+                        if buttons.pads[index].pressed {
+                            *c.local.current_keystroke = config.buttons[index].keystroke.clone();
+                            break;
+                        }
                     }
                     // Encoder 0
                     let delta = encoders.menu_encoder.read_delta();
@@ -679,22 +653,22 @@ mod app {
                     // Encoder 2
                     let delta = encoders.encoder1.read_delta();
                     if delta < 0 {
-                        *c.local.current_keystroke = config.encoder1.keystroke_left.clone();
+                        *c.local.current_keystroke = config.encoders[0].keystroke_left.clone();
                     } else if delta > 0 {
-                        *c.local.current_keystroke = config.encoder1.keystroke_right.clone();
+                        *c.local.current_keystroke = config.encoders[0].keystroke_right.clone();
                     }
                     if encoders.encoder1.button {
-                        *c.local.current_keystroke = config.encoder1.keystroke_push.clone();
+                        *c.local.current_keystroke = config.encoders[0].keystroke_push.clone();
                     }
                     // Encoder 3
                     let delta = encoders.encoder2.read_delta();
                     if delta < 0 {
-                        *c.local.current_keystroke = config.encoder2.keystroke_left.clone();
+                        *c.local.current_keystroke = config.encoders[1].keystroke_left.clone();
                     } else if delta > 0 {
-                        *c.local.current_keystroke = config.encoder2.keystroke_right.clone();
+                        *c.local.current_keystroke = config.encoders[1].keystroke_right.clone();
                     }
                     if encoders.encoder2.button {
-                        *c.local.current_keystroke = config.encoder2.keystroke_push.clone();
+                        *c.local.current_keystroke = config.encoders[1].keystroke_push.clone();
                     }
                 },
             );
@@ -802,16 +776,16 @@ mod app {
             encoders.encoder2.delta += encoder2_increment;
             encoders.encoder2.button = encoder2_switch_value;
             // - Buttons
-            buttons.pad0.update(c.local.button0.is_low().unwrap());
-            buttons.pad1.update(c.local.button1.is_low().unwrap());
-            buttons.pad2.update(c.local.button2.is_low().unwrap());
-            buttons.pad3.update(c.local.button3.is_low().unwrap());
-            buttons.pad4.update(c.local.button4.is_low().unwrap());
-            buttons.pad5.update(c.local.button5.is_low().unwrap());
-            buttons.pad6.update(c.local.button6.is_low().unwrap());
-            buttons.pad7.update(c.local.button7.is_low().unwrap());
-            buttons.pad8.update(c.local.button8.is_low().unwrap());
-            buttons.pad9.update(c.local.button9.is_low().unwrap());
+            buttons.pads[0].update(c.local.button0.is_low().unwrap());
+            buttons.pads[1].update(c.local.button1.is_low().unwrap());
+            buttons.pads[2].update(c.local.button2.is_low().unwrap());
+            buttons.pads[3].update(c.local.button3.is_low().unwrap());
+            buttons.pads[4].update(c.local.button4.is_low().unwrap());
+            buttons.pads[5].update(c.local.button5.is_low().unwrap());
+            buttons.pads[6].update(c.local.button6.is_low().unwrap());
+            buttons.pads[7].update(c.local.button7.is_low().unwrap());
+            buttons.pads[8].update(c.local.button8.is_low().unwrap());
+            buttons.pads[9].update(c.local.button9.is_low().unwrap());
             // Debounce push buttons
             if encoders.menu_encoder.value_changed
                 || encoders.encoder1.value_changed

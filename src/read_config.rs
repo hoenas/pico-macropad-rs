@@ -1,4 +1,4 @@
-use alloc::string::String;
+use alloc::string::{String, ToString};
 use anyhow::Error;
 use embedded_sdmmc::{BlockDevice, Directory, ShortFileName, TimeSource};
 
@@ -27,7 +27,8 @@ pub fn get_last_config(
     root_dir: &Directory<'_, impl BlockDevice, impl TimeSource, 4, 4, 1>,
 ) -> anyhow::Result<String> {
     let (bytes_read, buffer) = read_file(root_dir, LAST_CONFIG_FILE_NAME)?;
-    Ok(String::from(core::str::from_utf8(&buffer[..bytes_read])?))
+    let file_name = core::str::from_utf8(&buffer[..bytes_read])?;
+    Ok(file_name.to_string())
 }
 
 pub fn read_config_file(
@@ -39,24 +40,24 @@ pub fn read_config_file(
     let mut config: MacroConfig = serde_cbor::from_slice(&buffer[..bytes_read])
         .map_err(|_| Error::msg("Failed to parse config"))?;
     // Reverse keystrokes for easier popping later
-    config.button0.keystroke.reverse();
-    config.button1.keystroke.reverse();
-    config.button2.keystroke.reverse();
-    config.button3.keystroke.reverse();
-    config.button4.keystroke.reverse();
-    config.button5.keystroke.reverse();
-    config.button6.keystroke.reverse();
-    config.button7.keystroke.reverse();
-    config.button8.keystroke.reverse();
-    config.button9.keystroke.reverse();
+    config.buttons[0].keystroke.reverse();
+    config.buttons[1].keystroke.reverse();
+    config.buttons[2].keystroke.reverse();
+    config.buttons[3].keystroke.reverse();
+    config.buttons[4].keystroke.reverse();
+    config.buttons[5].keystroke.reverse();
+    config.buttons[6].keystroke.reverse();
+    config.buttons[7].keystroke.reverse();
+    config.buttons[8].keystroke.reverse();
+    config.buttons[9].keystroke.reverse();
     config.menu_encoder.keystroke_left.reverse();
     config.menu_encoder.keystroke_right.reverse();
-    config.encoder1.keystroke_left.reverse();
-    config.encoder1.keystroke_right.reverse();
-    config.encoder1.keystroke_push.reverse();
-    config.encoder2.keystroke_left.reverse();
-    config.encoder2.keystroke_right.reverse();
-    config.encoder2.keystroke_push.reverse();
+    config.encoders[0].keystroke_left.reverse();
+    config.encoders[0].keystroke_right.reverse();
+    config.encoders[0].keystroke_push.reverse();
+    config.encoders[1].keystroke_left.reverse();
+    config.encoders[1].keystroke_right.reverse();
+    config.encoders[1].keystroke_push.reverse();
     Ok(config)
 }
 

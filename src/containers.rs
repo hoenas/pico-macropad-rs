@@ -42,29 +42,11 @@ impl MacroPadButton {
 
 #[derive(Default)]
 pub struct MacroPadButtons {
-    pub pad0: MacroPadButton,
-    pub pad1: MacroPadButton,
-    pub pad2: MacroPadButton,
-    pub pad3: MacroPadButton,
-    pub pad4: MacroPadButton,
-    pub pad5: MacroPadButton,
-    pub pad6: MacroPadButton,
-    pub pad7: MacroPadButton,
-    pub pad8: MacroPadButton,
-    pub pad9: MacroPadButton,
+    pub pads: [MacroPadButton; 10],
 }
 
 impl MacroPadButtons {
     pub fn any_button_changed(&self) -> bool {
-        self.pad0.pressed_changed
-            || self.pad1.pressed_changed
-            || self.pad2.pressed_changed
-            || self.pad3.pressed_changed
-            || self.pad4.pressed_changed
-            || self.pad5.pressed_changed
-            || self.pad6.pressed_changed
-            || self.pad7.pressed_changed
-            || self.pad8.pressed_changed
-            || self.pad9.pressed_changed
+        self.pads.iter().any(|x| x.pressed_changed)
     }
 }
