@@ -27,7 +27,6 @@
             <div class="file-actions">
                 <button id="update-btn">Refresh</button>
                 <button id="download-cfg">Download CFG</button>
-                <button id="download-package">Download package</button>
             </div>
             <div id="validation-errors"></div>
             <div id="feedback"></div>
@@ -78,6 +77,41 @@ A</pre>
             </details>
         </section>
     </main>
+
+    <!-- Icon Editor Modal -->
+    <div id="icon-editor-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Icon Editor</h2>
+                <button class="modal-close" type="button" title="Close">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="editor-container">
+                    <div class="editor-preview">
+                        <h3>Preview</h3>
+                        <canvas id="editor-canvas" width="22" height="22" class="editor-canvas"></canvas>
+                    </div>
+                    <div class="editor-controls">
+                        <div class="control-group">
+                            <label for="editor-image-input">Load Image</label>
+                            <input id="editor-image-input" type="file" accept="image/*" />
+                        </div>
+                        <div class="control-group">
+                            <label for="editor-threshold">B/W Threshold: <span id="threshold-value">128</span></label>
+                            <input id="editor-threshold" type="range" min="0" max="255" value="128" />
+                        </div>
+                        <div class="control-group">
+                            <button id="editor-invert-btn" type="button">Invert Colors</button>
+                        </div>
+                        <div class="editor-actions">
+                            <button id="editor-confirm-btn" type="button" class="btn-primary">Apply</button>
+                            <button id="editor-cancel-btn" type="button" class="btn-secondary">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <script src="app.js"></script>
 </body>

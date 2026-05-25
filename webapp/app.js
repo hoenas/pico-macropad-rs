@@ -25,9 +25,21 @@ const elements = {
     feedback: document.getElementById('feedback'),
     loadCfgFile: document.getElementById('load-cfg-file'),
     loadCfgBtn: document.getElementById('load-cfg-btn'),
+    iconEditorModal: document.getElementById('icon-editor-modal'),
+    editorCanvas: document.getElementById('editor-canvas'),
+    editorImageInput: document.getElementById('editor-image-input'),
+    editorThreshold: document.getElementById('editor-threshold'),
+    thresholdValue: document.getElementById('threshold-value'),
+    editorInvertBtn: document.getElementById('editor-invert-btn'),
+    editorConfirmBtn: document.getElementById('editor-confirm-btn'),
+    editorCancelBtn: document.getElementById('editor-cancel-btn'),
+    modalClose: document.querySelector('.modal-close'),
 };
 
 const iconBlobs = new Map();
+let currentEditorFieldId = null;
+let currentEditorImage = null;
+let currentEditorInverted = false;
 
 function normalizeSdcardPath(path) {
     const cleaned = path.trim().replace(/^\/+|^\\+/, '');
@@ -98,6 +110,9 @@ function encodeValue(value) {
     if (typeof value === 'string') {
         const bytes = utf8Encode(value);
         return concatUint8Arrays([encodeLength(3, bytes.length), bytes]);
+    }
+    if (value instanceof Uint8Array) {
+        return concatUint8Arrays([encodeLength(2, value.length), value]);
     }
     if (Array.isArray(value)) {
         const parts = [encodeLength(4, value.length)];
@@ -294,7 +309,7 @@ function createZip(entries) {
     return new Blob([...localParts, ...centralParts, endRecord], { type: 'application/zip' });
 }
 
-function createBmpBlob(width, height, pixels) {
+function createBmpBytes(width, height, pixels) {
     const rowBytes = Math.ceil(width / 32) * 4;
     const pixelDataSize = rowBytes * height;
     const headerSize = 14 + 40 + 8;
@@ -372,22 +387,26 @@ function createBmpBlob(width, height, pixels) {
         }
     }
 
-    return new Blob([buffer], { type: 'image/bmp' });
+    return new Uint8Array(buffer);
 }
 
-function convertIconImage(img) {
+function createBmpBlob(width, height, pixels) {
+    return new Blob([createBmpBytes(width, height, pixels)], { type: 'image/bmp' });
+}
+
+function convertIconImage(img, threshold = 128, invert = false) {
     const canvas = document.createElement('canvas');
-    canvas.width = 20;
-    canvas.height = 20;
+    canvas.width = 22;
+    canvas.height = 22;
     const ctx = canvas.getContext('2d');
     if (!ctx) {
         return null;
     }
 
-    ctx.clearRect(0, 0, 20, 20);
-    ctx.drawImage(img, 0, 0, 20, 20);
-    const imageData = ctx.getImageData(0, 0, 20, 20);
-    const pixels = new Uint8Array(400);
+    ctx.clearRect(0, 0, 22, 22);
+    ctx.drawImage(img, 0, 0, 22, 22);
+    const imageData = ctx.getImageData(0, 0, 22, 22);
+    const pixels = new Uint8Array(484);
     const data = imageData.data;
 
     for (let i = 0; i < data.length; i += 4) {
@@ -395,7 +414,10 @@ function convertIconImage(img) {
         const g = data[i + 1];
         const b = data[i + 2];
         const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-        const pixel = gray >= 128 ? 1 : 0;
+        let pixel = gray >= threshold ? 1 : 0;
+        if (invert) {
+            pixel = 1 - pixel;
+        }
         const value = pixel ? 255 : 0;
         data[i] = value;
         data[i + 1] = value;
@@ -404,7 +426,8 @@ function convertIconImage(img) {
     }
 
     ctx.putImageData(imageData, 0, 0);
-    return { blob: createBmpBlob(20, 20, pixels), pixels };
+    const bytes = createBmpBytes(22, 22, pixels);
+    return { blob: new Blob([bytes], { type: 'image/bmp' }), bytes, pixels };
 }
 
 function setFieldIcon(fieldId, file) {
@@ -412,28 +435,88 @@ function setFieldIcon(fieldId, file) {
     reader.onload = () => {
         const image = new Image();
         image.onload = () => {
-            const iconData = convertIconImage(image);
-            if (!iconData) {
-                showFeedback('Failed to convert icon image.', 'error');
-                return;
-            }
-            const fileName = file.name.replace(/\.[^.]+$/, '.bmp');
-            const defaultPath = normalizeSdcardPath(`icons/${fileName}`);
-            const pathInput = document.getElementById(`${fieldId}-icon-path`);
-            if (pathInput instanceof HTMLInputElement && !pathInput.value.trim()) {
-                pathInput.value = defaultPath;
-            }
-            iconBlobs.set(fieldId, { blob: iconData.blob, name: fileName, pixels: iconData.pixels });
-            setFieldIconPreview(fieldId, iconData.blob);
-            const downloadBtn = document.getElementById(`${fieldId}-icon-download`);
-            if (downloadBtn instanceof HTMLButtonElement) {
-                downloadBtn.disabled = false;
-            }
-            updateOutput();
+            currentEditorFieldId = fieldId;
+            currentEditorImage = image;
+            currentEditorInverted = false;
+            elements.editorThreshold.value = 128;
+            elements.thresholdValue.textContent = 128;
+            elements.editorImageInput.value = '';
+            drawEditorPreview();
+            openIconEditor();
         };
         image.src = reader.result;
     };
     reader.readAsDataURL(file);
+}
+
+function openIconEditor() {
+    elements.iconEditorModal.classList.remove('hidden');
+}
+
+function closeIconEditor() {
+    elements.iconEditorModal.classList.add('hidden');
+    currentEditorFieldId = null;
+    currentEditorImage = null;
+    currentEditorInverted = false;
+}
+
+function drawEditorPreview() {
+    if (!currentEditorImage || !elements.editorCanvas) {
+        return;
+    }
+    const threshold = parseInt(elements.editorThreshold.value, 10);
+    const iconData = convertIconImage(currentEditorImage, threshold, currentEditorInverted);
+    if (!iconData) {
+        return;
+    }
+
+    const ctx = elements.editorCanvas.getContext('2d');
+    if (!ctx) {
+        return;
+    }
+
+    const img = new Image();
+    img.onload = () => {
+        ctx.drawImage(img, 0, 0, 22, 22);
+    };
+    img.src = URL.createObjectURL(iconData.blob);
+}
+
+function confirmIconEdit() {
+    if (!currentEditorFieldId || !currentEditorImage) {
+        return;
+    }
+
+    const threshold = parseInt(elements.editorThreshold.value, 10);
+    const iconData = convertIconImage(currentEditorImage, threshold, currentEditorInverted);
+    if (!iconData) {
+        showFeedback('Failed to convert icon image.', 'error');
+        closeIconEditor();
+        return;
+    }
+
+    const fileName = `${currentEditorFieldId}.bmp`;
+    const defaultPath = normalizeSdcardPath(`icons/${fileName}`);
+    const pathInput = document.getElementById(`${currentEditorFieldId}-icon-path`);
+    if (pathInput instanceof HTMLInputElement && !pathInput.value.trim()) {
+        pathInput.value = defaultPath;
+    }
+
+    iconBlobs.set(currentEditorFieldId, { 
+        blob: iconData.blob, 
+        bytes: iconData.bytes, 
+        pixels: iconData.pixels, 
+        name: fileName 
+    });
+    setFieldIconPreview(currentEditorFieldId, iconData.blob);
+    const downloadBtn = document.getElementById(`${currentEditorFieldId}-icon-download`);
+    if (downloadBtn instanceof HTMLButtonElement) {
+        downloadBtn.disabled = false;
+    }
+
+    closeIconEditor();
+    updateOutput();
+    showFeedback('Icon updated successfully.', 'success');
 }
 
 function downloadFieldIcon(fieldId) {
@@ -463,14 +546,14 @@ function createButtonCard(field) {
         <div class="card">
             <h3>${field.title}</h3>
             ${createTextInput(`${field.id}-text`, 'Display text', 'Label or name')}
-            ${createTextInput(`${field.id}-icon-path`, 'Icon path', `icons/${field.id}.bmp`)}
             <label class="icon-input-label">
-                Upload icon
+                Choose icon
                 <input id="${field.id}-icon-file" class="field-icon-file" type="file" accept="image/*" />
             </label>
             <div class="button-icon-row">
-                <canvas id="${field.id}-icon-preview" class="button-icon-preview" width="20" height="20"></canvas>
-                <button id="${field.id}-icon-download" class="icon-download" type="button" disabled>Download BMP</button>
+                <canvas id="${field.id}-icon-preview" class="button-icon-preview" width="22" height="22"></canvas>
+                <button id="${field.id}-icon-edit" class="icon-edit-btn" type="button">Edit</button>
+                <button id="${field.id}-icon-download" class="icon-download" type="button" disabled>Download</button>
             </div>
             <label for="${field.id}-keystrokes">
                 Keystrokes
@@ -493,14 +576,14 @@ function createEncoderCard(field) {
         <div class="card">
             <h3>${field.title}</h3>
             ${createTextInput(`${field.id}-text`, 'Display text', 'Label or name')}
-            ${createTextInput(`${field.id}-icon-path`, 'Icon path', `icons/${field.id}.bmp`)}
             <label class="icon-input-label">
-                Upload icon
+                Choose icon
                 <input id="${field.id}-icon-file" class="field-icon-file" type="file" accept="image/*" />
             </label>
             <div class="button-icon-row">
-                <canvas id="${field.id}-icon-preview" class="button-icon-preview" width="20" height="20"></canvas>
-                <button id="${field.id}-icon-download" class="icon-download" type="button" disabled>Download BMP</button>
+                <canvas id="${field.id}-icon-preview" class="button-icon-preview" width="22" height="22"></canvas>
+                <button id="${field.id}-icon-edit" class="icon-edit-btn" type="button">Edit</button>
+                <button id="${field.id}-icon-download" class="icon-download" type="button" disabled>Download</button>
             </div>
             ${sections}
             <small>One chord per line. Comma-separated key names.</small>
@@ -542,32 +625,28 @@ function buildConfig() {
 
     buttonFields.forEach(field => {
         const text = document.getElementById(`${field.id}-text`).value.trim();
-        const iconPathValue = document.getElementById(`${field.id}-icon-path`).value.trim();
         const keystrokes = parseKeystrokes(document.getElementById(`${field.id}-keystrokes`).value);
 
         const buttonConfig = {
             display_text: text,
-            display_icon_path: iconPathValue ? normalizeSdcardPath(iconPathValue) : null,
             keystroke: keystrokes,
         };
         const icon = iconBlobs.get(field.id);
         if (icon) {
-            buttonConfig.display_icon_pixels = Array.from(icon.pixels);
+            buttonConfig.display_icon = icon.bytes;
         }
         config[field.id] = buttonConfig;
     });
 
     encoderFields.forEach(field => {
         const text = document.getElementById(`${field.id}-text`).value.trim();
-        const iconPathValue = document.getElementById(`${field.id}-icon-path`).value.trim();
         const encoderConfig = {
             display_text: text,
-            display_icon_path: iconPathValue ? normalizeSdcardPath(iconPathValue) : null,
         };
 
         const icon = iconBlobs.get(field.id);
         if (icon) {
-            encoderConfig.display_icon_pixels = Array.from(icon.pixels);
+            encoderConfig.display_icon = icon.bytes;
         }
 
         field.types.forEach(type => {
@@ -596,7 +675,7 @@ function updateDisplayPreview(config) {
         const btn = config[field.id];
         const icon = iconBlobs.get(field.id);
         if (icon) {
-            html += `<div class="display-button"><canvas class="display-icon-canvas" id="display-preview-${field.id}" width="20" height="20"></canvas></div>`;
+            html += `<div class="display-button"><canvas class="display-icon-canvas" id="display-preview-${field.id}" width="22" height="22"></canvas></div>`;
         } else {
             html += `<div class="display-button">${btn.display_text || ''}</div>`;
         }
@@ -610,25 +689,27 @@ function updateDisplayPreview(config) {
         if (icon) {
             const canvas = document.getElementById(`display-preview-${field.id}`);
             if (canvas instanceof HTMLCanvasElement) {
-                drawDisplayIcon(canvas, icon.pixels);
+                drawDisplayIcon(canvas, icon);
             }
         }
     });
 }
 
-function drawDisplayIcon(canvas, pixels) {
+function drawDisplayIcon(canvas, icon) {
     const ctx = canvas.getContext('2d');
     if (!ctx) {
         return;
     }
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    for (let y = 0; y < 20; y += 1) {
-        for (let x = 0; x < 20; x += 1) {
-            const pixel = pixels[y * 20 + x];
-            ctx.fillStyle = pixel ? '#000' : '#fff';
-            ctx.fillRect(x, y, 1, 1);
-        }
+    if (!icon || !icon.blob) {
+        return;
     }
+    const img = new Image();
+    img.onload = () => {
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        URL.revokeObjectURL(img.src);
+    };
+    img.src = URL.createObjectURL(icon.blob);
 }
 
 function validateConfig(config) {
@@ -647,8 +728,8 @@ function validateConfig(config) {
         if (typeof btn.display_text !== 'string') {
             errors.push(`Button ${index + 1}: display_text must be a string.`);
         }
-        if (btn.display_icon_path != null && typeof btn.display_icon_path !== 'string') {
-            errors.push(`Button ${index + 1}: display_icon_path must be a string or null.`);
+        if (btn.display_icon != null && !(btn.display_icon instanceof Uint8Array || (Array.isArray(btn.display_icon) && btn.display_icon.every(byte => typeof byte === 'number' && Number.isInteger(byte) && byte >= 0 && byte <= 255)))) {
+            errors.push(`Button ${index + 1}: display_icon must be a byte array or Uint8Array.`);
         }
         if (!Array.isArray(btn.keystroke)) {
             errors.push(`Button ${index + 1}: keystroke must be an array.`);
@@ -676,8 +757,8 @@ function validateConfig(config) {
         if (typeof enc.display_text !== 'string') {
             errors.push(`${field.title}: display_text must be a string.`);
         }
-        if (enc.display_icon_path != null && typeof enc.display_icon_path !== 'string') {
-            errors.push(`${field.title}: display_icon_path must be a string or null.`);
+        if (enc.display_icon != null && !(enc.display_icon instanceof Uint8Array || (Array.isArray(enc.display_icon) && enc.display_icon.every(byte => typeof byte === 'number' && Number.isInteger(byte) && byte >= 0 && byte <= 255)))) {
+            errors.push(`${field.title}: display_icon must be a byte array or Uint8Array.`);
         }
         field.types.forEach(type => {
             const dir = enc[`keystroke_${type}`];
@@ -766,26 +847,12 @@ function downloadPackage() {
     const iconPaths = new Map();
 
     [...buttonFields, ...encoderFields].forEach(field => {
-        const iconPath = document.getElementById(`${field.id}-icon-path`);
-        if (!(iconPath instanceof HTMLInputElement)) {
-            return;
-        }
-        const pathValue = iconPath.value.trim();
-        if (!pathValue) {
-            return;
-        }
-        const normalized = normalizeSdcardPath(pathValue);
-        if (!normalized) {
-            return;
-        }
         const icon = iconBlobs.get(field.id);
-        if (!icon) {
-            elements.validationErrors.innerHTML = `<p>Icon file missing for ${field.title}. Upload an icon to include it in the package.</p>`;
-            showFeedback(`Missing icon upload for ${field.title}`, 'error');
-            throw new Error('Missing icon upload');
-        }
-        if (!iconPaths.has(normalized)) {
-            iconPaths.set(normalized, icon.blob);
+        if (icon) {
+            const path = normalizeSdcardPath(`icons/${field.id}.bmp`);
+            if (!iconPaths.has(path)) {
+                iconPaths.set(path, icon.blob);
+            }
         }
     });
 
@@ -842,14 +909,11 @@ function loadConfigIntoForm(config) {
     buttonFields.forEach(field => {
         const btn = config[field.id] || {};
         document.getElementById(`${field.id}-text`).value = btn.display_text || '';
-        document.getElementById(`${field.id}-icon-path`).value = btn.display_icon_path || '';
 
-        if (Array.isArray(btn.display_icon_pixels) && btn.display_icon_pixels.length === 400) {
-            const pixels = Uint8Array.from(btn.display_icon_pixels);
-            const bmpBlob = createBmpBlob(20, 20, pixels);
-            const defaultPath = normalizeSdcardPath(document.getElementById(`${field.id}-icon-path`).value.trim() || `icons/${field.id}.bmp`);
-            document.getElementById(`${field.id}-icon-path`).value = defaultPath;
-            iconBlobs.set(field.id, { blob: bmpBlob, name: `${field.id}.bmp`, pixels });
+        const btnIconBytes = btn.display_icon instanceof Uint8Array ? btn.display_icon : Array.isArray(btn.display_icon) ? Uint8Array.from(btn.display_icon) : null;
+        if (btnIconBytes && btnIconBytes.length > 0) {
+            const bmpBlob = new Blob([btnIconBytes], { type: 'image/bmp' });
+            iconBlobs.set(field.id, { blob: bmpBlob, bytes: btnIconBytes, name: `${field.id}.bmp` });
             setFieldIconPreview(field.id, bmpBlob);
             const downloadBtn = document.getElementById(`${field.id}-icon-download`);
             if (downloadBtn instanceof HTMLButtonElement) {
@@ -869,14 +933,11 @@ function loadConfigIntoForm(config) {
     encoderFields.forEach(field => {
         const enc = config[field.id] || {};
         document.getElementById(`${field.id}-text`).value = enc.display_text || '';
-        document.getElementById(`${field.id}-icon-path`).value = enc.display_icon_path || '';
 
-        if (Array.isArray(enc.display_icon_pixels) && enc.display_icon_pixels.length === 400) {
-            const pixels = Uint8Array.from(enc.display_icon_pixels);
-            const bmpBlob = createBmpBlob(20, 20, pixels);
-            const defaultPath = normalizeSdcardPath(document.getElementById(`${field.id}-icon-path`).value.trim() || `icons/${field.id}.bmp`);
-            document.getElementById(`${field.id}-icon-path`).value = defaultPath;
-            iconBlobs.set(field.id, { blob: bmpBlob, name: `${field.id}.bmp`, pixels });
+        const encIconBytes = enc.display_icon instanceof Uint8Array ? enc.display_icon : Array.isArray(enc.display_icon) ? Uint8Array.from(enc.display_icon) : null;
+        if (encIconBytes && encIconBytes.length > 0) {
+            const bmpBlob = new Blob([encIconBytes], { type: 'image/bmp' });
+            iconBlobs.set(field.id, { blob: bmpBlob, bytes: encIconBytes, name: `${field.id}.bmp` });
             setFieldIconPreview(field.id, bmpBlob);
             const downloadBtn = document.getElementById(`${field.id}-icon-download`);
             if (downloadBtn instanceof HTMLButtonElement) {
@@ -952,7 +1013,6 @@ function loadExampleConfig() {
     buttonFields.forEach((field, idx) => {
         const char = String.fromCharCode(65 + idx);
         document.getElementById(`${field.id}-text`).value = char;
-        document.getElementById(`${field.id}-icon-path`).value = `icons/${field.id}.bmp`;
         document.getElementById(`${field.id}-keystrokes`).value = `${char}`;
         setFieldIconPreview(field.id, null);
         const downloadBtn = document.getElementById(`${field.id}-icon-download`);
@@ -963,7 +1023,6 @@ function loadExampleConfig() {
 
     encoderFields.forEach(field => {
         document.getElementById(`${field.id}-text`).value = field.title;
-        document.getElementById(`${field.id}-icon-path`).value = `icons/${field.id}.bmp`;
         field.types.forEach(type => {
             document.getElementById(`${field.id}-${type}-keystrokes`).value = type === 'left' ? 'LeftControl,C' : type === 'right' ? 'LeftControl,V' : 'LeftControl,V';
         });
@@ -993,6 +1052,49 @@ function collectIconFile(fieldId) {
 render();
 loadExampleConfig();
 
+// Modal event listeners
+elements.modalClose.addEventListener('click', closeIconEditor);
+elements.iconEditorModal.addEventListener('click', (event) => {
+    if (event.target === elements.iconEditorModal) {
+        closeIconEditor();
+    }
+});
+
+elements.editorThreshold.addEventListener('input', (event) => {
+    const value = event.target.value;
+    elements.thresholdValue.textContent = value;
+    drawEditorPreview();
+});
+
+elements.editorInvertBtn.addEventListener('click', () => {
+    currentEditorInverted = !currentEditorInverted;
+    elements.editorInvertBtn.textContent = currentEditorInverted ? 'Invert Colors (on)' : 'Invert Colors';
+    drawEditorPreview();
+});
+
+elements.editorImageInput.addEventListener('change', (event) => {
+    const file = event.target.files?.[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const image = new Image();
+            image.onload = () => {
+                currentEditorImage = image;
+                currentEditorInverted = false;
+                elements.editorThreshold.value = 128;
+                elements.thresholdValue.textContent = 128;
+                elements.editorInvertBtn.textContent = 'Invert Colors';
+                drawEditorPreview();
+            };
+            image.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+    }
+});
+
+elements.editorConfirmBtn.addEventListener('click', confirmIconEdit);
+elements.editorCancelBtn.addEventListener('click', closeIconEditor);
+
 elements.updateBtn.addEventListener('click', updateOutput);
 elements.downloadCfgBtn.addEventListener('click', downloadCfg);
 elements.downloadPackageBtn.addEventListener('click', downloadPackage);
@@ -1007,6 +1109,36 @@ document.addEventListener('change', event => {
     if (target.classList.contains('field-icon-file')) {
         const fieldId = target.id.replace(/-icon-file$/, '');
         collectIconFile(fieldId);
+    }
+});
+
+document.addEventListener('click', event => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+        return;
+    }
+    if (target.classList.contains('icon-edit-btn')) {
+        const fieldId = target.id.replace(/-icon-edit$/, '');
+        const icon = iconBlobs.get(fieldId);
+        if (icon) {
+            // Load the existing icon into the editor
+            const blob = icon.blob;
+            const img = new Image();
+            img.onload = () => {
+                currentEditorFieldId = fieldId;
+                currentEditorImage = img;
+                currentEditorInverted = false;
+                elements.editorThreshold.value = 128;
+                elements.thresholdValue.textContent = 128;
+                elements.editorImageInput.value = '';
+                elements.editorInvertBtn.textContent = 'Invert Colors';
+                drawEditorPreview();
+                openIconEditor();
+            };
+            img.src = URL.createObjectURL(blob);
+        } else {
+            showFeedback('Please load an icon first.', 'info');
+        }
     }
 });
 

@@ -1,4 +1,4 @@
-use alloc::{format, string::String};
+use alloc::{format, string::String, vec::Vec};
 use embedded_graphics::{
     mono_font::{ascii::FONT_6X10, MonoTextStyle},
     pixelcolor::BinaryColor,
@@ -20,7 +20,6 @@ use crate::MacroConfig;
 pub const CHARACTER_STYLE: MonoTextStyle<BinaryColor> =
     MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
 
-const ROTATION_SPACING: usize = 3;
 const ROTATION_SPACER: &str = "   ";
 
 trait Rotate {
@@ -34,10 +33,46 @@ impl Rotate for String {
             return self.clone();
         }
         let mut new_string = format!("{}{}", self, ROTATION_SPACER);
-        let index = amount % (len + ROTATION_SPACING);
+        let index = amount % (len + ROTATION_SPACER.len());
         let (start, end) = new_string.split_at(index);
         new_string = format!("{}{}", end, start);
         new_string.chars().take(length).collect()
+    }
+}
+
+struct DisplayData {
+    pub text: String,
+    pub icon: Option<Vec<u8>>,
+}
+
+trait GetDisplayData {
+    fn get_draw_data(&self) -> DisplayData;
+}
+
+impl GetDisplayData for crate::ButtonConfig {
+    fn get_draw_data(&self) -> DisplayData {
+        DisplayData {
+            text: self.display_text.clone(),
+            icon: self.display_icon.clone(),
+        }
+    }
+}
+
+impl GetDisplayData for crate::MenuEncoderConfig {
+    fn get_draw_data(&self) -> DisplayData {
+        DisplayData {
+            text: self.display_text.clone(),
+            icon: self.display_icon.clone(),
+        }
+    }
+}
+
+impl GetDisplayData for crate::EncoderConfig {
+    fn get_draw_data(&self) -> DisplayData {
+        DisplayData {
+            text: self.display_text.clone(),
+            icon: self.display_icon.clone(),
+        }
     }
 }
 
@@ -67,43 +102,55 @@ pub fn update_display(
     .unwrap();
 
     let origin = display.bounding_box().top_left;
-    Text::with_alignment(
-        config.name.as_str(),
-        origin + Point::new(0, 10),
-        CHARACTER_STYLE,
-        Alignment::Left,
-    )
-    .draw(display)
-    .unwrap();
-
+    // Draw other encoders
+    for (i, encoder) in config.encoders.iter().enumerate() {
+        let x = (26 * i) as i32;
+        let top_left = origin + Point::new(x, 0);
+        draw_icon_cell(display, encoder.get_draw_data(), top_left, rotation_counter);
+    }
+    // Draw menu encoder
+    let x = (26 * 5) as i32;
+    let top_left = origin + Point::new(x, 0);
+    draw_icon_cell(
+        display,
+        config.menu_encoder.get_draw_data(),
+        top_left,
+        rotation_counter,
+    );
+    // Draw buttons
     for row in 0..2 {
         for col in 0..5 {
             let idx = row * 5 + col;
             let button = &config.buttons[idx];
             let x = (26 * col) as i32;
-            let y = 15 + (row * 24) as i32;
+            let y = 21 + (row * 24) as i32;
             let top_left = origin + Point::new(x, y);
-            draw_button_cell(display, button, top_left);
+            draw_icon_cell(display, button.get_draw_data(), top_left, rotation_counter);
         }
     }
     display.flush().unwrap();
 }
 
-fn draw_button_cell<DI>(display: &mut DI, button: &crate::ButtonConfig, top_left: Point)
-where
+fn draw_icon_cell<DI>(
+    display: &mut DI,
+    element: DisplayData,
+    top_left: Point,
+    rotation_counter: usize,
+) where
     DI: DrawTarget<Color = BinaryColor>,
     DI::Error: core::fmt::Debug,
 {
-    if let Some(icon_bytes) = &button.display_icon {
+    // Draw icon if it exists and is validf
+    if let Some(icon_bytes) = &element.icon {
         if let Ok(bmp) = tinybmp::Bmp::<BinaryColor>::from_slice(icon_bytes) {
             bmp.draw(&mut display.translated(top_left)).unwrap();
             return;
         }
     }
-
+    // If there is no icon or the icon failed to load, draw rotating text instead
     Text::with_alignment(
-        button.display_text.as_str(),
-        top_left + Point::new(10, 14),
+        element.text.rotate(rotation_counter, 3).as_str(),
+        top_left + Point::new(0, 13),
         CHARACTER_STYLE,
         Alignment::Center,
     )
