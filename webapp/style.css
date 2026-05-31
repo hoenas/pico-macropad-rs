@@ -1,0 +1,282 @@
+:root {
+  color-scheme: dark;
+  --bg: #111;
+  --panel: #1c1c24;
+  --panel-alt: #24242b;
+  --text: #eee;
+  --muted: #888;
+  --accent: #4f8cff;
+  --button: #2a2a33;
+  --border: #333;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: Inter, system-ui, sans-serif;
+  background: radial-gradient(circle at top, #1f2a3d 0%, #090a0f 70%);
+  color: var(--text);
+}
+
+header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem;
+}
+
+.header-left h1 {
+  margin: 0 0 0.4rem;
+}
+
+.header-left p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+}
+
+button,
+select,
+input[type="text"] {
+  font: inherit;
+}
+
+button {
+  border: 1px solid var(--border);
+  color: var(--text);
+  background: var(--button);
+  padding: 0.85rem 1rem;
+  border-radius: 0.8rem;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #32323b;
+}
+
+.overview {
+  padding: 0 1.5rem 1rem;
+}
+
+.overview img {
+  max-width: 100%;
+  border-radius: 1rem;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+/* 5-column grid matching physical panel layout */
+.editor-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  padding: 0 1.5rem 2rem;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  padding: 1rem;
+}
+
+.card.empty {
+  background: transparent;
+  border: 1px dashed #2a2a33;
+}
+
+.card h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}
+
+.field-group {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.field-group label {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.field-group input,
+.field-group textarea,
+.field-group select {
+  width: 100%;
+  background: #141418;
+  border: 1px solid #2c2c35;
+  border-radius: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  color: var(--text);
+}
+
+.field-group textarea {
+  min-height: 4.5rem;
+  resize: vertical;
+  font-family: monospace;
+  font-size: 0.85rem;
+}
+
+.icon-preview {
+  display: grid;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.preview-box {
+  width: 72px;
+  height: 72px;
+  border-radius: 0.75rem;
+  background: #050507;
+  display: grid;
+  place-items: center;
+  border: 1px solid #2c2c35;
+}
+
+.preview-box canvas {
+  width: 44px;
+  height: 44px;
+  image-rendering: pixelated;
+}
+
+/* Modal */
+.modal {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.65);
+  z-index: 100;
+}
+
+.modal.open {
+  display: flex;
+}
+
+.modal-content {
+  width: min(92vw, 760px);
+  border-radius: 1rem;
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.modal-header,
+.modal-footer {
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.modal-header h2 {
+  margin: 0;
+}
+
+.modal-header button {
+  background: transparent;
+  border: none;
+  font-size: 1.5rem;
+  padding: 0.25rem 0.5rem;
+}
+
+.modal-body {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.icon-editor-canvas {
+  display: grid;
+  grid-template-columns: auto 160px;
+  gap: 1rem;
+  align-items: start;
+}
+
+#editorCanvas {
+  width: 440px;
+  height: 440px;
+  image-rendering: pixelated;
+  border: 1px solid var(--border);
+  background: #09090c;
+  cursor: crosshair;
+}
+
+.preview-panel {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.preview-panel .preview-label {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+#previewCanvas {
+  width: 132px;
+  height: 132px;
+  border: 1px solid var(--border);
+  image-rendering: pixelated;
+  background: #000;
+}
+
+#iconFileInput {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.editor-controls {
+  display: grid;
+  gap: 1rem;
+}
+
+.control-row {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.control-row label {
+  min-width: 55px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.control-row input,
+.control-row select,
+.control-row button {
+  flex: 1;
+}
+
+.control-row select,
+.control-row input[type="text"] {
+  background: #141418;
+  border: 1px solid #2c2c35;
+  border-radius: 0.75rem;
+  padding: 0.55rem 0.75rem;
+  color: var(--text);
+}
+
+/* Text input row only visible in text tool mode */
+.text-tool-row {
+  display: none;
+}
+
+.tool-text .text-tool-row {
+  display: flex;
+}
