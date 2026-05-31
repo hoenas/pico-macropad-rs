@@ -143,13 +143,15 @@ Opens as a modal overlay. Contains:
 ### Tools
 | Tool | Behaviour |
 |---|---|
-| Brush | Paints single pixels (or a square of `size×size` pixels) at the cursor position |
-| Text | Renders a string at a chosen position using a pixel font that fits 22px height |
+| Brush | Paints a square of `size×size` pixels at the cursor position |
+| Text | Renders a string at a chosen position using a monospace pixel font; hovering shows a live preview before committing on click |
 
 ### Controls
 - **Color**: toggle Black / White (default: White)
-- **Size**: 1 / 2 / 3 px (applies to brush radius and text scale)
-- **Tool preview**: cursor shows a scaled preview of the brush footprint or text before clicking
+- **Size**: 1–4, applied differently per tool:
+  - Brush: side length in pixels (1–4 px square)
+  - Text: selects from four font sizes designed to fit within the 22px canvas — size 1 is the smallest (≈5 px, fits 3–4 chars), size 4 is the largest (≈14 px, fits 1–2 chars)
+- **Text preview**: while hovering over the canvas in text tool mode, the text is rendered at the cursor position as a non-destructive overlay so the user can see placement before clicking to commit
 
 ### Import from file
 - `<input type="file" accept="image/*">` — loads an image, converts to 22×22 B/W (thresholded), writes to canvas

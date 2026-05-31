@@ -194,10 +194,11 @@ function renderIconCanvas(canvas, iconBytes) {
   image.src = url;
 }
 
-function updateEditorCanvas() {
+// Render a pixel array (defaults to iconPixels) to the editor and preview canvases.
+function updateEditorCanvas(pixels = iconPixels) {
   const imageData = editorCtx.createImageData(22, 22);
-  for (let i = 0; i < iconPixels.length; i++) {
-    const v = iconPixels[i] ? 255 : 0;
+  for (let i = 0; i < pixels.length; i++) {
+    const v = pixels[i] ? 255 : 0;
     imageData.data[i * 4 + 0] = v;
     imageData.data[i * 4 + 1] = v;
     imageData.data[i * 4 + 2] = v;
@@ -210,10 +211,12 @@ function updateEditorCanvas() {
   editorCtx.imageSmoothingEnabled = false;
   editorCtx.drawImage(offscreen, 0, 0, 220, 220);
 
-  // sync preview
-  const pData = previewCtx.createImageData(22, 22);
-  pData.data.set(imageData.data);
-  previewCtx.putImageData(pData, 0, 0);
+  // Only sync the small preview canvas when showing committed pixels.
+  if (pixels === iconPixels) {
+    const pData = previewCtx.createImageData(22, 22);
+    pData.data.set(imageData.data);
+    previewCtx.putImageData(pData, 0, 0);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -350,23 +353,45 @@ function applyBrush(px, py) {
   }
 }
 
-function applyText(text, px, py) {
+// Font sizes for text tool: size 1 is smallest (≈5 px, fits 3–4 chars in 22 px).
+const TEXT_FONT_SIZES = [5, 7, 10, 14];
+
+function textFontSize() {
+  return TEXT_FONT_SIZES[Math.min(Number(brushSizeSelect.value), 4) - 1];
+}
+
+// Render text into a copy of `basePixels` and return the new pixel array.
+// Does not modify iconPixels.
+function computeTextPixels(basePixels, text, px, py) {
+  const result = new Uint8Array(basePixels);
   const tmp = document.createElement('canvas');
   tmp.width = 22; tmp.height = 22;
   const ctx = tmp.getContext('2d');
+  // Start from a black background, paint existing pixels, then overlay text.
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, 22, 22);
+  for (let i = 0; i < 22 * 22; i++) {
+    if (result[i]) {
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(i % 22, Math.floor(i / 22), 1, 1);
+    }
+  }
   ctx.fillStyle = iconColor ? '#fff' : '#000';
-  ctx.font = `${Number(brushSizeSelect.value) * 5 + 6}px monospace`;
+  ctx.font = `${textFontSize()}px monospace`;
   ctx.textBaseline = 'top';
-  ctx.fillText(text, px - 2, py - 2);
+  ctx.fillText(text, px, py);
   const imgData = ctx.getImageData(0, 0, 22, 22);
   for (let row = 0; row < 22; row++) {
     for (let col = 0; col < 22; col++) {
       const idx = (row * 22 + col) * 4;
-      if (imgData.data[idx] > 128) setPixel(col, row, iconColor);
+      if (imgData.data[idx] > 128) result[row * 22 + col] = iconColor;
     }
   }
+  return result;
+}
+
+function applyText(text, px, py) {
+  iconPixels = computeTextPixels(iconPixels, text, px, py);
 }
 
 function canvasCoords(clientX, clientY) {
@@ -389,7 +414,19 @@ function handlePointer(clientX, clientY) {
 
 editorCanvas.addEventListener('mousedown', (e) => { isMouseDown = true; handlePointer(e.clientX, e.clientY); });
 document.addEventListener('mouseup', () => { isMouseDown = false; });
-editorCanvas.addEventListener('mousemove', (e) => { if (isMouseDown) handlePointer(e.clientX, e.clientY); });
+editorCanvas.addEventListener('mousemove', (e) => {
+  if (isMouseDown) {
+    handlePointer(e.clientX, e.clientY);
+  } else if (toolSelect.value === 'text') {
+    // Show a non-destructive live preview of the text at the cursor position.
+    const { x, y } = canvasCoords(e.clientX, e.clientY);
+    updateEditorCanvas(computeTextPixels(iconPixels, textInput.value || 'A', x, y));
+  }
+});
+editorCanvas.addEventListener('mouseleave', () => {
+  // Restore the canvas to the committed pixels when the cursor leaves.
+  if (toolSelect.value === 'text') updateEditorCanvas();
+});
 
 toolSelect.addEventListener('change', updateEditorControlState);
 colorSelect.addEventListener('change', () => { iconColor = colorSelect.value === 'white' ? 1 : 0; });
