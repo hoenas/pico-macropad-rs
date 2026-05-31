@@ -167,7 +167,9 @@ Opens as a modal overlay. Contains:
 ### Export
 1. JS serializes current `config` object to JSON string
 2. Calls `wasm.serialize(jsonStr)` → `Uint8Array` of CBOR bytes
-3. Creates a `Blob` and triggers `<a download="config.cbor">` click
+3. Sanitises `config.name` into a FAT32 8.3-compliant base name:
+   - Convert to uppercase, replace spaces with `_`, strip characters outside `[A-Z0-9!#$%&'()\-@^_\`{}~]`, truncate to 8 chars, fall back to `CONFIG` if empty
+4. Creates a `Blob` and triggers `<a download="<sanitised>.cfg">` click — extension is always `.cfg` to match the firmware's expected filename format
 
 ### Import
 1. User picks a `.cbor` file via `<input type="file">`

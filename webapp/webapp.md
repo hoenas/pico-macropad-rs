@@ -8,6 +8,11 @@ The requirements are given in the following.
 The user should be able to export / import configurations from / into the editor.
 To realize this, a web assembly binary should be used. The WASM binary should use the exact same datamodel as the Rust embedded application. This ensures that both datamodels are serialized / deserialized in exacly the same manner.
 
+Exported filenames must comply with the FAT32 8.3 naming convention, since config files are stored on an SD card formatted as FAT32 and read by the firmware:
+- Base name: maximum 8 characters, uppercase A–Z, digits 0–9, and `! # $ % & ' ( ) - @ ^ _ \` { } ~`; spaces are replaced with underscores and all other invalid characters are stripped
+- Extension: exactly `.cfg` (3 characters), matching the extension the firmware expects
+- If sanitisation produces an empty base name, fall back to `CONFIG`
+
 # Data format
 
 The import / export dataformat can be read from [here]()../src/lib.rs) (see MacroConfig struct).

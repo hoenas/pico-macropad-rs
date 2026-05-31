@@ -485,6 +485,18 @@ configFileInput.addEventListener('change', async (e) => {
   e.target.value = '';
 });
 
+// Produce a FAT32 8.3-compliant base name from an arbitrary string.
+function toFat32BaseName(name) {
+  const sanitised = (name || '')
+    .toUpperCase()
+    .replace(/\s+/g, '_')
+    .split('')
+    .filter(c => /[A-Z0-9!#$%&'()\-@^_`{}~]/.test(c))
+    .slice(0, 8)
+    .join('');
+  return sanitised || 'CONFIG';
+}
+
 exportButton.addEventListener('click', async () => {
   if (!config) return;
   const bytes = await export_config_to_cbor(config);
@@ -492,7 +504,7 @@ exportButton.addEventListener('click', async () => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${config.name || 'macropad-config'}.cbor`;
+  a.download = `${toFat32BaseName(config.name)}.cfg`;
   document.body.appendChild(a);
   a.click();
   a.remove();
