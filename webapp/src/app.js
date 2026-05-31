@@ -14,7 +14,6 @@ const closeIconEditorBtn = document.getElementById('closeIconEditor');
 const cancelIconButton = document.getElementById('cancelIconButton');
 const saveIconButton = document.getElementById('saveIconButton');
 const editorCanvas = document.getElementById('editorCanvas');
-const previewCanvas = document.getElementById('previewCanvas');
 const toolSelect = document.getElementById('toolSelect');
 const colorSelect = document.getElementById('colorSelect');
 const brushSizeSelect = document.getElementById('brushSizeSelect');
@@ -24,7 +23,6 @@ const clearCanvasButton = document.getElementById('clearCanvas');
 const iconFileInput = document.getElementById('iconFileInput');
 
 const editorCtx = editorCanvas.getContext('2d');
-const previewCtx = previewCanvas.getContext('2d');
 
 const ICON_SIZE = 21; // icon dimensions in pixels (width and height)
 
@@ -230,7 +228,7 @@ function renderIconCanvas(canvas, iconBytes) {
   image.src = url;
 }
 
-// Render a pixel array (defaults to iconPixels) to the editor and preview canvases.
+// Render a pixel array (defaults to iconPixels) to the editor canvas.
 function updateEditorCanvas(pixels = iconPixels) {
   const imageData = editorCtx.createImageData(ICON_SIZE, ICON_SIZE);
   for (let i = 0; i < pixels.length; i++) {
@@ -246,13 +244,6 @@ function updateEditorCanvas(pixels = iconPixels) {
 
   editorCtx.imageSmoothingEnabled = false;
   editorCtx.drawImage(offscreen, 0, 0, editorCanvas.width, editorCanvas.height);
-
-  // Only sync the small preview canvas when showing committed pixels.
-  if (pixels === iconPixels) {
-    const pData = previewCtx.createImageData(ICON_SIZE, ICON_SIZE);
-    pData.data.set(imageData.data);
-    previewCtx.putImageData(pData, 0, 0);
-  }
 }
 
 // ---------------------------------------------------------------------------

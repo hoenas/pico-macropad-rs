@@ -37,12 +37,6 @@
       <div class="modal-body">
         <div class="icon-editor-canvas">
           <canvas id="editorCanvas" width="210" height="210"></canvas>
-          <div class="preview-panel">
-            <div class="preview-label">Preview (21×21)</div>
-            <canvas id="previewCanvas" width="21" height="21"></canvas>
-            <div class="preview-label" style="margin-top:1rem">Import from file</div>
-            <input type="file" id="iconFileInput" accept="image/*" />
-          </div>
         </div>
         <div class="editor-controls">
           <div class="control-row">
@@ -75,6 +69,10 @@
           <div class="control-row">
             <button id="clearCanvas">Clear (black)</button>
             <button id="fillCanvas">Fill white</button>
+          </div>
+          <div class="control-row">
+            <label>Import</label>
+            <input type="file" id="iconFileInput" accept="image/*" />
           </div>
         </div>
       </div>

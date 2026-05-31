@@ -240,10 +240,7 @@ button:hover {
 }
 
 .icon-editor-canvas {
-  display: grid;
-  grid-template-columns: auto 160px;
-  gap: 1rem;
-  align-items: start;
+  display: flex;
 }
 
 #editorCanvas {
@@ -253,24 +250,6 @@ button:hover {
   border: 1px solid var(--border);
   background: #09090c;
   cursor: crosshair;
-}
-
-.preview-panel {
-  display: grid;
-  gap: 0.5rem;
-}
-
-.preview-panel .preview-label {
-  color: var(--muted);
-  font-size: 0.85rem;
-}
-
-#previewCanvas {
-  width: 132px;
-  height: 132px;
-  border: 1px solid var(--border);
-  image-rendering: pixelated;
-  background: #000;
 }
 
 #iconFileInput {

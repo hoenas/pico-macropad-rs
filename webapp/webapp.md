@@ -45,7 +45,7 @@ This subeditor should be opened in a popup and provide the following functionali
 - Draw 21x21px B/W icons
 - Brush tool
 - Text tool
-  - Multiple size options, including small sizes suitable for fitting 3–4 characters within the 22px canvas
+  - Multiple size options, including small sizes suitable for fitting 3–4 characters within the 21px canvas
   - Live preview: while hovering over the canvas in text mode, the text should be rendered at the cursor position as a preview before the user clicks to commit
 - Size selection for the tools
 - Color selection (black or white)

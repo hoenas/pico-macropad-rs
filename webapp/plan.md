@@ -158,14 +158,12 @@ The row index (0/1/2) is passed from `renderEditorGrid` → `createCard` → `op
 - **Color**: toggle Black / White (default: White)
 - **Size**: 1–4, applied differently per tool:
   - Brush: side length in pixels (1–4 px square)
-  - Text: selects from four font sizes designed to fit within the 22px canvas — size 1 is the smallest (≈5 px, fits 3–4 chars), size 4 is the largest (≈14 px, fits 1–2 chars)
+  - Text: selects from four font sizes designed to fit within the 21px canvas — size 1 is the smallest (≈5 px, fits 3–4 chars), size 4 is the largest (≈14 px, fits 1–2 chars)
 - **Text preview**: while hovering over the canvas in text tool mode, the text is rendered at the cursor position as a non-destructive overlay so the user can see placement before clicking to commit
-
-### Import from file
-- `<input type="file" accept="image/*">` — loads an image, converts to 21×21 B/W (thresholded), writes to canvas
+- **Import from file**: `<input type="file" accept="image/*">` — loads an image, converts to 21×21 B/W (thresholded), writes to canvas; placed in the controls panel
 
 ### Commit
-- **Save** – serializes canvas pixels to a `Uint8Array` (1 byte per pixel, row-major, 0=black 1=white or raw 1-bit packed matching the firmware expectation — confirm with firmware `update_display.rs`) and stores in `config`
+- **Save** – encodes canvas pixels as a 1-bit BMP and stores in `config`; the card preview canvas is updated immediately
 - **Cancel** – discards changes
 
 ---
