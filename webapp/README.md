@@ -29,8 +29,8 @@ Then open `http://localhost:8080` in a browser.
 | Button | Action |
 |---|---|
 | **New Config** | Start a blank configuration |
-| **Import Config** | Load a `.cbor` file from disk |
-| **Export Config** | Save the current configuration as a `.cbor` file |
+| **Import Config** | Load a `.cfg` file from disk |
+| **Export Config** | Save the current configuration as a `.cfg` file |
 
 ### Editor grid
 

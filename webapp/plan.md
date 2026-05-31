@@ -97,7 +97,7 @@ All modules are plain ES modules; no bundler required.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  [New Config]  [Import .cbor]  [Export .cbor]           │
+│  [New Config]  [Import .cfg]  [Export .cfg]           │
 ├─────────────────────────────────────────────────────────┤
 │  panel_overview.png  (static reference image)           │
 ├────────────┬────────────┬────────────┬──────┬───────────┤
@@ -161,6 +161,7 @@ The row index (0/1/2) is passed from `renderEditorGrid` → `createCard` → `op
   - Text: selects from four font sizes designed to fit within the 21px canvas — size 1 is the smallest (≈5 px, fits 3–4 chars), size 4 is the largest (≈14 px, fits 1–2 chars)
 - **Text preview**: while hovering over the canvas in text tool mode, the text is rendered at the cursor position as a non-destructive overlay so the user can see placement before clicking to commit
 - **Import from file**: `<input type="file" accept="image/*">` — loads an image, converts to 21×21 B/W (thresholded), writes to canvas; placed in the controls panel
+- **Threshold slider**: a `<input type="range" min="0" max="255">` shown only after an image is loaded; adjusting it re-applies the luminance threshold to the stored raw grayscale data and updates the canvas in real time; slider resets and hides when the editor is closed
 
 ### Commit
 - **Save** – encodes canvas pixels as a 1-bit BMP and stores in `config`; the card preview canvas is updated immediately
@@ -178,7 +179,7 @@ The row index (0/1/2) is passed from `renderEditorGrid` → `createCard` → `op
 4. Creates a `Blob` and triggers `<a download="<sanitised>.cfg">` click — extension is always `.cfg` to match the firmware's expected filename format
 
 ### Import
-1. User picks a `.cbor` file via `<input type="file">`
+1. User picks a `.cfg` file via `<input type="file">`
 2. JS reads it as `ArrayBuffer`
 3. Calls `wasm.deserialize(bytes)` → JSON string
 4. Parses JSON into `config`, re-renders all editors
