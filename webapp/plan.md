@@ -138,7 +138,15 @@ Opens as a modal overlay. Contains:
 
 ### Canvas
 - 21×21 pixel canvas, scaled up (e.g. ×10 = 210px internal resolution, displayed larger via CSS) for comfortable drawing
-- Default: filled black
+- Default background and tool color depend on the grid row of the element being edited:
+
+| Grid row | Elements | Default background | Default tool color |
+|---|---|---|---|
+| 1 | Encoders, menu encoder | Black (`fill(0)`) | White |
+| 2 | Buttons 1–5 | White (`fill(1)`) | Black |
+| 3 | Buttons 6–10 | Black (`fill(0)`) | White |
+
+The row index (0/1/2) is passed from `renderEditorGrid` → `createCard` → `openIconEditor`. The defaults only apply when opening the editor for an element with no existing icon; the tool color default applies regardless.
 
 ### Tools
 | Tool | Behaviour |

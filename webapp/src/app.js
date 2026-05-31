@@ -253,7 +253,7 @@ function createKeystrokeSection(element) {
   return container;
 }
 
-function createCard(title, element, { titleOnly = false } = {}) {
+function createCard(title, element, { titleOnly = false, row = 0 } = {}) {
   const card = document.createElement('div');
   card.className = 'card';
 
@@ -280,7 +280,7 @@ function createCard(title, element, { titleOnly = false } = {}) {
       <button type="button">Edit icon</button>`;
     const iconCanvas = iconGroup.querySelector('canvas');
     renderIconCanvas(iconCanvas, element.display_icon);
-    iconGroup.querySelector('button').addEventListener('click', () => openIconEditor(element, iconCanvas));
+    iconGroup.querySelector('button').addEventListener('click', () => openIconEditor(element, iconCanvas, row));
     card.appendChild(iconGroup);
   }
 
@@ -296,19 +296,19 @@ function renderEditorGrid() {
   nameProxy.__onchange = () => { config.name = nameProxy.display_text; };
   nameCard.querySelector('input').addEventListener('input', () => { config.name = nameProxy.display_text; });
 
-  editorGrid.appendChild(createCard('Encoder 1', config.encoders[0]));
-  editorGrid.appendChild(createCard('Encoder 2', config.encoders[1]));
+  editorGrid.appendChild(createCard('Encoder 1', config.encoders[0], { row: 0 }));
+  editorGrid.appendChild(createCard('Encoder 2', config.encoders[1], { row: 0 }));
   editorGrid.appendChild(nameCard);
 
   const emptyCell = document.createElement('div');
   emptyCell.className = 'card empty';
   editorGrid.appendChild(emptyCell);
 
-  editorGrid.appendChild(createCard('Menu encoder', config.menu_encoder));
+  editorGrid.appendChild(createCard('Menu encoder', config.menu_encoder, { row: 0 }));
 
-  // Rows 2–3: Buttons 1–10
+  // Rows 2–3: Buttons 1–10 (row 1 = buttons 1–5, row 2 = buttons 6–10)
   config.buttons.forEach((btn, i) => {
-    editorGrid.appendChild(createCard(`Button ${i + 1}`, btn));
+    editorGrid.appendChild(createCard(`Button ${i + 1}`, btn, { row: i < 5 ? 1 : 2 }));
   });
 }
 
@@ -316,16 +316,29 @@ function renderEditorGrid() {
 // Icon editor modal
 // ---------------------------------------------------------------------------
 
-function openIconEditor(element, cardCanvas) {
+// Row-based defaults: row 0 (encoders) and row 2 (buttons 6–10) use black bg + white tool;
+// row 1 (buttons 1–5) uses white bg + black tool.
+function rowDefaults(row) {
+  return row === 1
+    ? { bg: 1, color: 0, colorName: 'black' }
+    : { bg: 0, color: 1, colorName: 'white' };
+}
+
+function openIconEditor(element, cardCanvas, row = 0) {
   currentIconTarget = element;
   currentIconCanvas = cardCanvas;
 
+  const defaults = rowDefaults(row);
   const existing = element.display_icon
     ? decodeBmp(new Uint8Array(element.display_icon))
     : null;
-  iconPixels = existing ?? new Uint8Array(ICON_SIZE * ICON_SIZE);
-  iconColor = 1;
-  colorSelect.value = 'white';
+  if (existing) {
+    iconPixels = existing;
+  } else {
+    iconPixels = new Uint8Array(ICON_SIZE * ICON_SIZE).fill(defaults.bg);
+  }
+  iconColor = defaults.color;
+  colorSelect.value = defaults.colorName;
   toolSelect.value = 'brush';
   updateEditorControlState();
   updateEditorCanvas();

@@ -46,6 +46,8 @@ This subeditor should be opened in a popup and provide the following functionali
   - Live preview: while hovering over the canvas in text mode, the text should be rendered at the cursor position as a preview before the user clicks to commit
 - Size selection for the tools
 - Color selection (black or white)
-- It should start from an empty black canvas by default
-- Tool color selection should be white by default
+- Default canvas background and tool color depend on the row of the element being edited, matching typical OLED rendering conventions:
+  - Row 1 (encoders, menu encoder): black background, white tool color
+  - Row 2 (buttons 1–5): white background, black tool color
+  - Row 3 (buttons 6–10): black background, white tool color
 - The tools should preview what will be drawn on the canvas.
