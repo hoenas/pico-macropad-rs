@@ -123,8 +123,8 @@ Each card is an HTML `<div class="editor-card">` containing:
 - **display_text** – `<input type="text">` label
 - **keystroke** – sequence-of-sequences editor:
   - Each inner `Vec<KeyboardCode>` is a "chord" (simultaneously pressed keys)
-  - Chords are displayed in order; the user can add/remove chords and keys within each chord
-  - Keys are selected from a dropdown populated with all `KeyboardCode` variant names
+  - Chords are one per line; keys within a chord are comma-separated `KeyboardCode` variant name strings
+  - **Autocomplete**: a floating dropdown appears below the textarea as the user types a partial key name (the token after the last `,` or newline). Matching is ranked: prefix matches first, then substring matches; up to 8 suggestions shown. Tab or Enter accepts the top suggestion (prevents default newline/focus-change); Escape dismisses. Accepting replaces only the current partial token, leaving the rest of the text intact. After accepting, the dropdown is suppressed for that event cycle to avoid re-triggering on the synthetic `input` event used to re-parse the keystroke value.
 - **display_icon** – 21×21 preview rendered on a small `<canvas>` (or "no icon" placeholder)
 - **[Edit Icon]** button – opens the icon editor popup
 

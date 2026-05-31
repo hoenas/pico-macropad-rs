@@ -28,6 +28,39 @@ const previewCtx = previewCanvas.getContext('2d');
 
 const ICON_SIZE = 21; // icon dimensions in pixels (width and height)
 
+// All KeyboardCode variant names from macropad-model, used for keystroke autocomplete.
+const KEYBOARD_CODES = [
+  'NoEventIndicated','ErrorRollOver','POSTFail','ErrorUndefine',
+  'A','B','C','D','E','F','G','H','I','J','K','L','M',
+  'N','O','P','Q','R','S','T','U','V','W','X','Y','Z',
+  'Keyboard1','Keyboard2','Keyboard3','Keyboard4','Keyboard5',
+  'Keyboard6','Keyboard7','Keyboard8','Keyboard9','Keyboard0',
+  'ReturnEnter','Escape','DeleteBackspace','Tab','Space',
+  'Minus','Equal','LeftBrace','RightBrace','Backslash',
+  'NonUSHash','Semicolon','Apostrophe','Grave','Comma','Dot','ForwardSlash',
+  'CapsLock',
+  'F1','F2','F3','F4','F5','F6','F7','F8','F9','F10','F11','F12',
+  'PrintScreen','ScrollLock','Pause','Insert','Home','PageUp',
+  'DeleteForward','End','PageDown',
+  'RightArrow','LeftArrow','DownArrow','UpArrow',
+  'KeypadNumLockAndClear','KeypadDivide','KeypadMultiply','KeypadSubtract',
+  'KeypadAdd','KeypadEnter',
+  'Keypad1','Keypad2','Keypad3','Keypad4','Keypad5',
+  'Keypad6','Keypad7','Keypad8','Keypad9','Keypad0','KeypadDot',
+  'NonUSBackslash','Application','Power','KeypadEqual',
+  'F13','F14','F15','F16','F17','F18','F19','F20','F21','F22','F23','F24',
+  'Execute','Help','Menu','Select','Stop','Again','Undo','Cut','Copy','Paste','Find',
+  'Mute','VolumeUp','VolumeDown',
+  'LockingCapsLock','LockingNumLock','LockingScrollLock',
+  'KeypadComma','KeypadEqualSign',
+  'Kanji1','Kanji2','Kanji3','Kanji4','Kanji5','Kanji6','Kanji7','Kanji8','Kanji9',
+  'LANG1','LANG2','LANG3','LANG4','LANG5','LANG6','LANG7','LANG8','LANG9',
+  'AlternateErase','SysReqAttention','Cancel','Clear','Prior','Return',
+  'Separator','Out','Oper','ClearAgain','CrSelProps','ExSel',
+  'LeftControl','LeftShift','LeftAlt','LeftGUI',
+  'RightControl','RightShift','RightAlt','RightGUI',
+];
+
 let config = null;
 let currentIconTarget = null;
 let currentIconCanvas = null; // card canvas to refresh on save
@@ -223,6 +256,69 @@ function updateEditorCanvas(pixels = iconPixels) {
 }
 
 // ---------------------------------------------------------------------------
+// Keystroke autocomplete
+// ---------------------------------------------------------------------------
+
+function addAutocomplete(textarea, dropdown) {
+  let suggestions = [];
+  let suppressUpdate = false;
+
+  function getCurrentToken() {
+    const before = textarea.value.slice(0, textarea.selectionStart);
+    const sep = Math.max(before.lastIndexOf(','), before.lastIndexOf('\n'));
+    return before.slice(sep + 1).trimStart();
+  }
+
+  function replaceToken(suggestion) {
+    const before = textarea.value.slice(0, textarea.selectionStart);
+    const after = textarea.value.slice(textarea.selectionStart);
+    const sep = Math.max(before.lastIndexOf(','), before.lastIndexOf('\n'));
+    textarea.value = before.slice(0, sep + 1) + suggestion + after;
+    textarea.selectionStart = textarea.selectionEnd = sep + 1 + suggestion.length;
+    // Suppress the autocomplete update triggered by the synthetic input event,
+    // but still let the keystroke parser run.
+    suppressUpdate = true;
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  function updateDropdown() {
+    if (suppressUpdate) { suppressUpdate = false; dropdown.hidden = true; return; }
+    const token = getCurrentToken();
+    if (!token) { dropdown.hidden = true; return; }
+    const lower = token.toLowerCase();
+    const prefix = KEYBOARD_CODES.filter(k => k.toLowerCase().startsWith(lower));
+    const sub = KEYBOARD_CODES.filter(k => !k.toLowerCase().startsWith(lower) && k.toLowerCase().includes(lower));
+    suggestions = [...prefix, ...sub].slice(0, 8);
+    if (suggestions.length === 0) { dropdown.hidden = true; return; }
+    dropdown.innerHTML = '';
+    suggestions.forEach((s, i) => {
+      const li = document.createElement('li');
+      li.textContent = s;
+      if (i === 0) li.classList.add('active');
+      li.addEventListener('mousedown', (e) => {
+        e.preventDefault(); // keep textarea focused
+        replaceToken(s);
+      });
+      dropdown.appendChild(li);
+    });
+    dropdown.hidden = false;
+  }
+
+  textarea.addEventListener('input', updateDropdown);
+  textarea.addEventListener('keydown', (e) => {
+    if (!dropdown.hidden && (e.key === 'Tab' || e.key === 'Enter')) {
+      e.preventDefault();
+      if (suggestions.length > 0) replaceToken(suggestions[0]);
+    } else if (e.key === 'Escape') {
+      dropdown.hidden = true;
+    }
+  });
+  textarea.addEventListener('blur', () => {
+    setTimeout(() => { dropdown.hidden = true; }, 150);
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Editor grid
 // ---------------------------------------------------------------------------
 
@@ -232,11 +328,30 @@ function createKeystrokeSection(element) {
   function makeArea(label, key) {
     const group = document.createElement('div');
     group.className = 'field-group';
-    group.innerHTML = `<label>${label}</label>
-      <textarea placeholder="One chord per line, key names e.g. LeftControl,C">${serializeKeystrokes(element[key])}</textarea>`;
-    group.querySelector('textarea').addEventListener('input', (e) => {
-      element[key] = parseKeystrokeLines(e.target.value);
+
+    const lbl = document.createElement('label');
+    lbl.textContent = label;
+    group.appendChild(lbl);
+
+    const acWrapper = document.createElement('div');
+    acWrapper.className = 'keystroke-autocomplete';
+    group.appendChild(acWrapper);
+
+    const textarea = document.createElement('textarea');
+    textarea.placeholder = 'One chord per line, key names e.g. LeftControl,C';
+    textarea.value = serializeKeystrokes(element[key]);
+    acWrapper.appendChild(textarea);
+
+    const dropdown = document.createElement('ul');
+    dropdown.className = 'autocomplete-dropdown';
+    dropdown.hidden = true;
+    acWrapper.appendChild(dropdown);
+
+    textarea.addEventListener('input', () => {
+      element[key] = parseKeystrokeLines(textarea.value);
     });
+    addAutocomplete(textarea, dropdown);
+
     return group;
   }
 

@@ -129,6 +129,45 @@ button:hover {
   font-size: 0.85rem;
 }
 
+.keystroke-autocomplete {
+  position: relative;
+}
+
+.keystroke-autocomplete textarea {
+  width: 100%;
+}
+
+.autocomplete-dropdown {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 2px);
+  z-index: 50;
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem 0;
+  background: #1c1c28;
+  border: 1px solid var(--accent);
+  border-radius: 0.6rem;
+  max-height: 200px;
+  overflow-y: auto;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
+
+.autocomplete-dropdown li {
+  padding: 0.3rem 0.7rem;
+  font-family: monospace;
+  font-size: 0.82rem;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.autocomplete-dropdown li:hover,
+.autocomplete-dropdown li.active {
+  background: #2a3a5e;
+  color: #fff;
+}
+
 .icon-preview {
   display: grid;
   gap: 0.5rem;

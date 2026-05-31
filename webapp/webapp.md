@@ -32,6 +32,9 @@ The layout should be as follows:
 Every editor should show all necessary information, e.g.:
 - Title
 - Keystroke (see datamodel)
+  - Each keystroke field should offer autocomplete for `KeyboardCode` variant names
+  - Suggestions should appear as the user types a partial name, ranked by prefix match first then substring match
+  - Pressing Tab or Enter while suggestions are visible accepts the top suggestion; Escape dismisses the list
 - Icon (if available)
 - Button to open icon editor (see below)
 
