@@ -54,3 +54,4 @@ This subeditor should be opened in a popup and provide the following functionali
   - Row 2 (buttons 1–5): white background, black tool color
   - Row 3 (buttons 6–10): black background, white tool color
 - The tools should preview what will be drawn on the canvas.
+- When importing an image file, a threshold slider (0–255) must be shown allowing the user to control the luminance cutoff used when converting the image to B/W. The slider updates the preview in real time and is hidden again when the icon editor is closed.

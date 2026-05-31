@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Macropad Web App</title>
   <link rel="stylesheet" href="style.css" />
 </head>
+
 <body>
   <header>
     <div class="header-left">
@@ -74,6 +76,11 @@
             <label>Import</label>
             <input type="file" id="iconFileInput" accept="image/*" />
           </div>
+          <div class="control-row" id="thresholdRow" hidden>
+            <label>Threshold</label>
+            <input type="range" id="thresholdSlider" min="0" max="255" value="127" />
+            <span id="thresholdValue">127</span>
+          </div>
         </div>
       </div>
       <div class="modal-footer">
@@ -85,4 +92,5 @@
 
   <script type="module" src="src/app.js"></script>
 </body>
+
 </html>

@@ -21,6 +21,9 @@ const textInput = document.getElementById('textInput');
 const fillCanvasButton = document.getElementById('fillCanvas');
 const clearCanvasButton = document.getElementById('clearCanvas');
 const iconFileInput = document.getElementById('iconFileInput');
+const thresholdSlider = document.getElementById('thresholdSlider');
+const thresholdValueLabel = document.getElementById('thresholdValue');
+const thresholdRow = document.getElementById('thresholdRow');
 
 const editorCtx = editorCanvas.getContext('2d');
 
@@ -61,6 +64,7 @@ const KEYBOARD_CODES = [
 
 let config = null;
 let currentIconTarget = null;
+let rawGrayscalePixels = null; // stored after image import for live threshold preview
 let currentIconCanvas = null; // card canvas to refresh on save
 let iconPixels = new Uint8Array(ICON_SIZE * ICON_SIZE);
 let iconColor = 1;
@@ -455,6 +459,10 @@ function closeIconEditorModal() {
   iconEditorModal.classList.remove('open');
   currentIconTarget = null;
   currentIconCanvas = null;
+  rawGrayscalePixels = null;
+  thresholdRow.hidden = true;
+  thresholdSlider.value = 127;
+  thresholdValueLabel.textContent = '127';
 }
 
 function updateEditorControlState() {
@@ -568,7 +576,17 @@ saveIconButton.addEventListener('click', () => {
   closeIconEditorModal();
 });
 
-// Import icon from image file — convert to ICON_SIZE × ICON_SIZE B/W
+// Apply threshold from slider to rawGrayscalePixels and update the editor canvas.
+function applyThreshold() {
+  if (!rawGrayscalePixels) return;
+  const threshold = Number(thresholdSlider.value);
+  for (let i = 0; i < ICON_SIZE * ICON_SIZE; i++) {
+    iconPixels[i] = rawGrayscalePixels[i] > threshold ? 1 : 0;
+  }
+  updateEditorCanvas();
+}
+
+// Import icon from image file — store raw grayscale, convert to ICON_SIZE × ICON_SIZE B/W using slider threshold.
 iconFileInput.addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
@@ -580,17 +598,24 @@ iconFileInput.addEventListener('change', (e) => {
     const ctx = tmp.getContext('2d');
     ctx.drawImage(img, 0, 0, ICON_SIZE, ICON_SIZE);
     const imgData = ctx.getImageData(0, 0, ICON_SIZE, ICON_SIZE);
+    rawGrayscalePixels = new Uint8Array(ICON_SIZE * ICON_SIZE);
     for (let i = 0; i < ICON_SIZE * ICON_SIZE; i++) {
       const r = imgData.data[i * 4];
       const g = imgData.data[i * 4 + 1];
       const b = imgData.data[i * 4 + 2];
-      iconPixels[i] = (r + g + b) / 3 > 127 ? 1 : 0;
+      rawGrayscalePixels[i] = Math.round((r + g + b) / 3);
     }
-    updateEditorCanvas();
+    thresholdRow.hidden = false;
+    applyThreshold();
     URL.revokeObjectURL(url);
     e.target.value = '';
   };
   img.src = url;
+});
+
+thresholdSlider.addEventListener('input', () => {
+  thresholdValueLabel.textContent = thresholdSlider.value;
+  applyThreshold();
 });
 
 // ---------------------------------------------------------------------------
