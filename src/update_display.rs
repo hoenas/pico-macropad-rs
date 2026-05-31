@@ -123,7 +123,7 @@ pub fn update_display(
             let idx = row * 5 + col;
             let button = &config.buttons[idx];
             let x = (26 * col) as i32;
-            let y = 23 + (row * 23) as i32;
+            let y = 21 + (row * 21) as i32;
             let top_left = origin + Point::new(x, y);
             draw_icon_cell(display, button.get_draw_data(), top_left, rotation_counter);
         }

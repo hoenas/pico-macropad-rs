@@ -46,11 +46,11 @@ Each card contains:
 
 - **Title** — the display text shown on the OLED for that button or encoder
 - **Keystroke** fields — one chord per line, keys within a chord separated by commas. Use `KeyboardCode` variant names (e.g. `LeftControl,C` for Ctrl+C, `ReturnEnter` for Enter). Encoder cards have separate fields for left rotation, right rotation, and push (menu encoder has left/right only).
-- **Icon** — a 22×22 pixel preview. Click **Edit icon** to open the icon editor.
+- **Icon** — a 21×21 pixel preview. Click **Edit icon** to open the icon editor.
 
 ### Icon editor
 
-Opens as a modal popup. The canvas is displayed scaled up for comfortable drawing; the small preview on the right shows the actual 22×22 result.
+Opens as a modal popup. The canvas is displayed scaled up for comfortable drawing; the small preview on the right shows the actual 21×21 result.
 
 **Tools**
 
@@ -66,7 +66,7 @@ Opens as a modal popup. The canvas is displayed scaled up for comfortable drawin
 - **Text input** — visible in Text tool mode; the string to draw on click
 - **Clear** — fills the canvas black
 - **Fill white** — fills the canvas white
-- **Import from file** — loads any image file, scales it to 22×22 and converts to black/white
+- **Import from file** — loads any image file, scales it to 21×21 and converts to black/white
 
 Click **Save Icon** to apply the icon to the card, or **Cancel** to discard changes.
 

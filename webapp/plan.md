@@ -125,7 +125,7 @@ Each card is an HTML `<div class="editor-card">` containing:
   - Each inner `Vec<KeyboardCode>` is a "chord" (simultaneously pressed keys)
   - Chords are displayed in order; the user can add/remove chords and keys within each chord
   - Keys are selected from a dropdown populated with all `KeyboardCode` variant names
-- **display_icon** – 22×22 preview rendered on a small `<canvas>` (or "no icon" placeholder)
+- **display_icon** – 21×21 preview rendered on a small `<canvas>` (or "no icon" placeholder)
 - **[Edit Icon]** button – opens the icon editor popup
 
 Encoder cards additionally show three keystroke sections: `Left`, `Right`, `Push` (or `Left`/`Right` only for the menu encoder).
@@ -137,7 +137,7 @@ Encoder cards additionally show three keystroke sections: `Left`, `Right`, `Push
 Opens as a modal overlay. Contains:
 
 ### Canvas
-- 22×22 pixel canvas, scaled up (e.g. ×12 = 264px display size) for comfortable drawing
+- 21×21 pixel canvas, scaled up (e.g. ×10 = 210px internal resolution, displayed larger via CSS) for comfortable drawing
 - Default: filled black
 
 ### Tools
@@ -154,7 +154,7 @@ Opens as a modal overlay. Contains:
 - **Text preview**: while hovering over the canvas in text tool mode, the text is rendered at the cursor position as a non-destructive overlay so the user can see placement before clicking to commit
 
 ### Import from file
-- `<input type="file" accept="image/*">` — loads an image, converts to 22×22 B/W (thresholded), writes to canvas
+- `<input type="file" accept="image/*">` — loads an image, converts to 21×21 B/W (thresholded), writes to canvas
 
 ### Commit
 - **Save** – serializes canvas pixels to a `Uint8Array` (1 byte per pixel, row-major, 0=black 1=white or raw 1-bit packed matching the firmware expectation — confirm with firmware `update_display.rs`) and stores in `config`

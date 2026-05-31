@@ -26,10 +26,12 @@ const iconFileInput = document.getElementById('iconFileInput');
 const editorCtx = editorCanvas.getContext('2d');
 const previewCtx = previewCanvas.getContext('2d');
 
+const ICON_SIZE = 21; // icon dimensions in pixels (width and height)
+
 let config = null;
 let currentIconTarget = null;
 let currentIconCanvas = null; // card canvas to refresh on save
-let iconPixels = new Uint8Array(22 * 22);
+let iconPixels = new Uint8Array(ICON_SIZE * ICON_SIZE);
 let iconColor = 1;
 let isMouseDown = false;
 
@@ -77,16 +79,16 @@ function parseKeystrokeLines(content) {
 }
 
 // ---------------------------------------------------------------------------
-// BMP encode / decode (1-bit, 22×22)
+// BMP encode / decode (1-bit, ICON_SIZE × ICON_SIZE)
 // ---------------------------------------------------------------------------
 
 function encodeBmp(pixels) {
   const headerSize = 14;
   const infoSize = 40;
   const paletteSize = 8; // 2 colours × 4 bytes
-  const rowBytes = Math.ceil(22 / 8);
+  const rowBytes = Math.ceil(ICON_SIZE / 8);
   const paddedRowBytes = ((rowBytes + 3) >> 2) << 2;
-  const pixelDataSize = paddedRowBytes * 22;
+  const pixelDataSize = paddedRowBytes * ICON_SIZE;
   const fileSize = headerSize + infoSize + paletteSize + pixelDataSize;
   const bytes = new Uint8Array(fileSize);
 
@@ -102,7 +104,7 @@ function encodeBmp(pixels) {
 
   // BITMAPINFOHEADER
   bytes[14] = infoSize;
-  bytes[18] = 22; bytes[22] = 22; // width, height (bottom-up)
+  bytes[18] = ICON_SIZE; bytes[22] = ICON_SIZE; // width, height (bottom-up)
   bytes[26] = 1;  // planes
   bytes[28] = 1;  // bits per pixel
   bytes[34] = pixelDataSize & 0xff;
@@ -116,10 +118,10 @@ function encodeBmp(pixels) {
   bytes[58] = 255; bytes[59] = 255; bytes[60] = 255; bytes[61] = 0;
 
   // Pixel data (bottom-up row order)
-  for (let row = 0; row < 22; row++) {
-    const rowStart = dataOffset + (21 - row) * paddedRowBytes;
-    for (let col = 0; col < 22; col++) {
-      const bit = pixels[row * 22 + col] ? 1 : 0;
+  for (let row = 0; row < ICON_SIZE; row++) {
+    const rowStart = dataOffset + (ICON_SIZE - 1 - row) * paddedRowBytes;
+    for (let col = 0; col < ICON_SIZE; col++) {
+      const bit = pixels[row * ICON_SIZE + col] ? 1 : 0;
       const bytePos = rowStart + (col >> 3);
       const bitPos = 7 - (col & 7);
       bytes[bytePos] |= bit << bitPos;
@@ -134,36 +136,37 @@ function decodeBmp(bytes) {
     bytes = new Uint8Array(bytes);
   }
   if (bytes[0] !== 0x42 || bytes[1] !== 0x4d) return null;
+  // Read width and height from BMP header (byte offsets 18 and 22 respectively).
   const width = bytes[18] | (bytes[19] << 8) | (bytes[20] << 16) | (bytes[21] << 24);
   const height = bytes[22] | (bytes[23] << 8) | (bytes[24] << 16) | (bytes[25] << 24);
   const bitsPerPixel = bytes[28] | (bytes[29] << 8);
   const dataOffset = bytes[10] | (bytes[11] << 8) | (bytes[12] << 16) | (bytes[13] << 24);
-  if (width !== 22 || Math.abs(height) !== 22) return null;
+  if (width !== ICON_SIZE || Math.abs(height) !== ICON_SIZE) return null;
 
-  const pixelArray = new Uint8Array(22 * 22);
+  const pixelArray = new Uint8Array(ICON_SIZE * ICON_SIZE);
   const rowBytes = Math.ceil(width / 8);
   const paddedRowBytes = ((rowBytes + 3) >> 2) << 2;
   const bottomUp = height > 0;
 
   if (bitsPerPixel === 1) {
-    for (let row = 0; row < 22; row++) {
-      const srcRow = bottomUp ? 21 - row : row;
+    for (let row = 0; row < ICON_SIZE; row++) {
+      const srcRow = bottomUp ? ICON_SIZE - 1 - row : row;
       const rowStart = dataOffset + srcRow * paddedRowBytes;
-      for (let col = 0; col < 22; col++) {
+      for (let col = 0; col < ICON_SIZE; col++) {
         const byteIndex = rowStart + (col >> 3);
         const bitIndex = 7 - (col & 7);
-        pixelArray[row * 22 + col] = (bytes[byteIndex] >> bitIndex) & 1;
+        pixelArray[row * ICON_SIZE + col] = (bytes[byteIndex] >> bitIndex) & 1;
       }
     }
   } else if (bitsPerPixel === 24) {
     const paddedRow24 = ((width * 3 + 3) >> 2) << 2;
-    for (let row = 0; row < 22; row++) {
-      const srcRow = bottomUp ? 21 - row : row;
+    for (let row = 0; row < ICON_SIZE; row++) {
+      const srcRow = bottomUp ? ICON_SIZE - 1 - row : row;
       const rowStart = dataOffset + srcRow * paddedRow24;
-      for (let col = 0; col < 22; col++) {
+      for (let col = 0; col < ICON_SIZE; col++) {
         const px = rowStart + col * 3;
         const luma = (bytes[px] + bytes[px + 1] + bytes[px + 2]) / 3;
-        pixelArray[row * 22 + col] = luma > 127 ? 1 : 0;
+        pixelArray[row * ICON_SIZE + col] = luma > 127 ? 1 : 0;
       }
     }
   } else {
@@ -196,7 +199,7 @@ function renderIconCanvas(canvas, iconBytes) {
 
 // Render a pixel array (defaults to iconPixels) to the editor and preview canvases.
 function updateEditorCanvas(pixels = iconPixels) {
-  const imageData = editorCtx.createImageData(22, 22);
+  const imageData = editorCtx.createImageData(ICON_SIZE, ICON_SIZE);
   for (let i = 0; i < pixels.length; i++) {
     const v = pixels[i] ? 255 : 0;
     imageData.data[i * 4 + 0] = v;
@@ -205,15 +208,15 @@ function updateEditorCanvas(pixels = iconPixels) {
     imageData.data[i * 4 + 3] = 255;
   }
   const offscreen = document.createElement('canvas');
-  offscreen.width = 22; offscreen.height = 22;
+  offscreen.width = ICON_SIZE; offscreen.height = ICON_SIZE;
   offscreen.getContext('2d').putImageData(imageData, 0, 0);
 
   editorCtx.imageSmoothingEnabled = false;
-  editorCtx.drawImage(offscreen, 0, 0, 220, 220);
+  editorCtx.drawImage(offscreen, 0, 0, editorCanvas.width, editorCanvas.height);
 
   // Only sync the small preview canvas when showing committed pixels.
   if (pixels === iconPixels) {
-    const pData = previewCtx.createImageData(22, 22);
+    const pData = previewCtx.createImageData(ICON_SIZE, ICON_SIZE);
     pData.data.set(imageData.data);
     previewCtx.putImageData(pData, 0, 0);
   }
@@ -273,7 +276,7 @@ function createCard(title, element, { titleOnly = false } = {}) {
     const iconGroup = document.createElement('div');
     iconGroup.className = 'field-group icon-preview';
     iconGroup.innerHTML = `<label>Icon</label>
-      <div class="preview-box"><canvas width="22" height="22"></canvas></div>
+      <div class="preview-box"><canvas width="${ICON_SIZE}" height="${ICON_SIZE}"></canvas></div>
       <button type="button">Edit icon</button>`;
     const iconCanvas = iconGroup.querySelector('canvas');
     renderIconCanvas(iconCanvas, element.display_icon);
@@ -320,7 +323,7 @@ function openIconEditor(element, cardCanvas) {
   const existing = element.display_icon
     ? decodeBmp(new Uint8Array(element.display_icon))
     : null;
-  iconPixels = existing ?? new Uint8Array(22 * 22);
+  iconPixels = existing ?? new Uint8Array(ICON_SIZE * ICON_SIZE);
   iconColor = 1;
   colorSelect.value = 'white';
   toolSelect.value = 'brush';
@@ -340,8 +343,8 @@ function updateEditorControlState() {
 }
 
 function setPixel(x, y, value) {
-  if (x < 0 || x >= 22 || y < 0 || y >= 22) return;
-  iconPixels[y * 22 + x] = value;
+  if (x < 0 || x >= ICON_SIZE || y < 0 || y >= ICON_SIZE) return;
+  iconPixels[y * ICON_SIZE + x] = value;
 }
 
 function applyBrush(px, py) {
@@ -353,7 +356,7 @@ function applyBrush(px, py) {
   }
 }
 
-// Font sizes for text tool: size 1 is smallest (≈5 px, fits 3–4 chars in 22 px).
+// Font sizes for text tool: size 1 is smallest (≈5 px, fits 3–4 chars in 21 px).
 const TEXT_FONT_SIZES = [5, 7, 10, 14];
 
 function textFontSize() {
@@ -365,26 +368,26 @@ function textFontSize() {
 function computeTextPixels(basePixels, text, px, py) {
   const result = new Uint8Array(basePixels);
   const tmp = document.createElement('canvas');
-  tmp.width = 22; tmp.height = 22;
+  tmp.width = ICON_SIZE; tmp.height = ICON_SIZE;
   const ctx = tmp.getContext('2d');
   // Start from a black background, paint existing pixels, then overlay text.
   ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, 22, 22);
-  for (let i = 0; i < 22 * 22; i++) {
+  ctx.fillRect(0, 0, ICON_SIZE, ICON_SIZE);
+  for (let i = 0; i < ICON_SIZE * ICON_SIZE; i++) {
     if (result[i]) {
       ctx.fillStyle = '#fff';
-      ctx.fillRect(i % 22, Math.floor(i / 22), 1, 1);
+      ctx.fillRect(i % ICON_SIZE, Math.floor(i / ICON_SIZE), 1, 1);
     }
   }
   ctx.fillStyle = iconColor ? '#fff' : '#000';
   ctx.font = `${textFontSize()}px monospace`;
   ctx.textBaseline = 'top';
   ctx.fillText(text, px, py);
-  const imgData = ctx.getImageData(0, 0, 22, 22);
-  for (let row = 0; row < 22; row++) {
-    for (let col = 0; col < 22; col++) {
-      const idx = (row * 22 + col) * 4;
-      if (imgData.data[idx] > 128) result[row * 22 + col] = iconColor;
+  const imgData = ctx.getImageData(0, 0, ICON_SIZE, ICON_SIZE);
+  for (let row = 0; row < ICON_SIZE; row++) {
+    for (let col = 0; col < ICON_SIZE; col++) {
+      const idx = (row * ICON_SIZE + col) * 4;
+      if (imgData.data[idx] > 128) result[row * ICON_SIZE + col] = iconColor;
     }
   }
   return result;
@@ -397,8 +400,8 @@ function applyText(text, px, py) {
 function canvasCoords(clientX, clientY) {
   const rect = editorCanvas.getBoundingClientRect();
   return {
-    x: Math.max(0, Math.min(21, Math.floor(((clientX - rect.left) / rect.width) * 22))),
-    y: Math.max(0, Math.min(21, Math.floor(((clientY - rect.top) / rect.height) * 22))),
+    x: Math.max(0, Math.min(ICON_SIZE - 1, Math.floor(((clientX - rect.left) / rect.width) * ICON_SIZE))),
+    y: Math.max(0, Math.min(ICON_SIZE - 1, Math.floor(((clientY - rect.top) / rect.height) * ICON_SIZE))),
   };
 }
 
@@ -446,7 +449,7 @@ saveIconButton.addEventListener('click', () => {
   closeIconEditorModal();
 });
 
-// Import icon from image file — convert to 22×22 B/W
+// Import icon from image file — convert to ICON_SIZE × ICON_SIZE B/W
 iconFileInput.addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
@@ -454,11 +457,11 @@ iconFileInput.addEventListener('change', (e) => {
   const img = new Image();
   img.onload = () => {
     const tmp = document.createElement('canvas');
-    tmp.width = 22; tmp.height = 22;
+    tmp.width = ICON_SIZE; tmp.height = ICON_SIZE;
     const ctx = tmp.getContext('2d');
-    ctx.drawImage(img, 0, 0, 22, 22);
-    const imgData = ctx.getImageData(0, 0, 22, 22);
-    for (let i = 0; i < 22 * 22; i++) {
+    ctx.drawImage(img, 0, 0, ICON_SIZE, ICON_SIZE);
+    const imgData = ctx.getImageData(0, 0, ICON_SIZE, ICON_SIZE);
+    for (let i = 0; i < ICON_SIZE * ICON_SIZE; i++) {
       const r = imgData.data[i * 4];
       const g = imgData.data[i * 4 + 1];
       const b = imgData.data[i * 4 + 2];

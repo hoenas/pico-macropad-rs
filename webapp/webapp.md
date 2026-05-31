@@ -39,7 +39,7 @@ Every editor should show all necessary information, e.g.:
 
 The user should be able to provide icon files either from disk, oder by drawing on a specific subeditor.
 This subeditor should be opened in a popup and provide the following functionality:
-- Draw 22x22px B/W icons
+- Draw 21x21px B/W icons
 - Brush tool
 - Text tool
   - Multiple size options, including small sizes suitable for fitting 3–4 characters within the 22px canvas
