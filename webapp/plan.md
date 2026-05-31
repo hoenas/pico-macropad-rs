@@ -1,84 +1,197 @@
-## Plan: Implement Macropad Web App
+# Macropad Web App – Implementation Plan
 
-TL;DR - build a shared Rust config model plus a WASM-backed web UI that can import/export the exact same MacroConfig format used by the embedded app, and implement a panel editor plus 22x22 icon editor popup.
+## Overview
 
-**Steps**
-1. Extract the shared datamodel into a reusable Rust crate.
-   - Create a new crate such as `macropad-model` in the repo root.
-   - Move `MacroConfig`, `ButtonConfig`, `EncoderConfig`, `MenuEncoderConfig`, `LedConfig`, and `KeyboardCode` definitions from `src/lib.rs` into that crate.
-   - Keep the crate `no_std`/`alloc` compatible, with optional `std` support for wasm.
-   - Re-export the shared types from the embedded app crate so existing code continues to compile.
-   - Update `src/read_config.rs`, `src/update_display.rs`, `src/example_config.rs`, and any other usages to import from the shared crate.
+A single-page WYSIWYG editor for configuring the macropad. The app is served as static HTML and uses a WebAssembly binary built from the shared `macropad-model` Rust crate to serialize/deserialize `MacroConfig` to/from CBOR — guaranteeing byte-for-byte compatibility with the embedded firmware.
 
-2. Add a new WASM crate for the web app model and serializer.
-   - Create a new crate under `webapp/wasm` or `webapp/pkg`.
-   - Make it depend on `macropad-model` and `serde_cbor`.
-   - Add `wasm-bindgen` and `serde-wasm-bindgen` to expose Rust functions to JavaScript.
-   - Implement public functions for `MacroConfig` serialization and deserialization:
-     - `export_config_to_cbor(config) -> Vec<u8>`
-     - `import_config_from_cbor(bytes) -> MacroConfig`
-     - optionally `default_config()`.
-   - Ensure the WASM module uses the same CBOR layout as `src/read_config.rs`.
+---
 
-3. Create the web UI shell and the panel editor layout.
-   - Add `webapp/index.html` and app source files in `webapp/src/`.
-   - Implement the UI with a 3-row grid matching the required layout:
-     - Row 1: Encoder1 editor, Encoder2 editor, Title section editor, Menu encoder editor.
-     - Row 2: Button1..Button5 editors.
-     - Row 3: Button6..Button10 editors.
-   - Each editor card should show title, keystroke display, icon preview, and a button to open the icon editor.
-   - Use the `panel_overview.png` image as the visual layout reference.
+## 1. Repository Structure
 
-4. Implement import/export controls in the UI.
-   - Add UI buttons for Import and Export.
-   - On import, read the selected binary file and pass it to the WASM deserializer.
-   - On export, serialize the current `MacroConfig` through WASM and download the resulting CBOR file.
-   - Use file load/save via browser APIs to keep the data format binary-compatible.
+```
+webapp/
+├── index.html          # single page, all UI
+├── style.css           # layout and component styles
+├── src/
+│   └── app.js          # application logic (vanilla ES modules)
+├── wasm/               # Rust WASM crate
+│   ├── Cargo.toml
+│   └── src/
+│       └── lib.rs      # thin WASM wrapper around macropad-model
+├── pkg/                # wasm-pack output (gitignored)
+└── panel_overview.png  # reference image shown in the header
+```
 
-5. Implement the icon editor popup.
-   - Add a popup dialog or modal that opens when the icon editor button is clicked.
-   - Implement a 22x22 B/W drawing canvas with:
-     - brush tool
-     - text tool
-     - tool size selection
-     - color selection (black/white)
-     - preview of the drawn result
-   - Default to an empty black canvas and white draw color.
-   - Load existing `display_icon` when opening the editor if present.
-   - Save the canvas back into `display_icon` in the same representation used by the shared model.
-   - Define a stable icon representation in the shared model (e.g. 22x22 B/W buffer) so import/export remains exact.
+---
 
-6. Validate and document the implementation.
-   - Add a small test in the WASM crate verifying roundtrip serialization of `MacroConfig`.
-   - Add a manual verification checklist covering:
-     - editor layout matches required panel positions
-     - import/export roundtrip works
-     - icon editor opens and saves B/W icons
-     - default canvas state and color defaults are correct
-   - Document build and run steps in `webapp/README.md` or update `webapp/webapp.md`.
+## 2. WASM Module (`webapp/wasm`)
 
-**Relevant files**
-- `webapp/webapp.md` — feature requirements.
-- `src/lib.rs` — current datamodel definitions.
-- `Cargo.toml` — root package setup and workspace update point.
-- `src/read_config.rs` — existing CBOR deserialization path.
-- `src/update_display.rs` — uses shared model types.
-- `src/example_config.rs` — example config creation.
-- `webapp/panel_overview.png` — layout reference.
+### 2.1 Cargo.toml
 
-**Verification**
-1. Confirm the shared model crate compiles for both embedded and WASM targets.
-2. Verify `wasm-bindgen` exports can import/export a sample `MacroConfig` without data drift.
-3. Confirm editor grid is rendered with the required 10 button/editor cards plus encoder/menu editor.
-4. Confirm icon editor opens, starts black, draws white by default, and preserves icon data on save.
-5. Confirm binary import of an exported config yields the same content on re-import.
+- `crate-type = ["cdylib"]`
+- Dependencies: `macropad-model` (path = `../../macropad-model`), `wasm-bindgen`, `serde_cbor` (or `ciborium`), `serde` with `derive`
 
-**Decisions**
-- Use a shared Rust crate to guarantee the exact same datamodel and serialization for embedded and webapp.
-- Implement the UI in a browser frontend that calls wasm for model serialization/deserialization.
-- Keep the icon editor and layout requirements as separate front-end work from the shared config model.
+### 2.2 Exposed API (`lib.rs`)
 
-**Further Considerations**
-1. Decide whether the webapp repo should become a proper Cargo workspace now or remain as a separate package.
-2. Choose an icon storage encoding (raw 484-byte B/W pixel buffer or packed bits) and make it explicit in the shared crate.
-3. Decide whether the initial web UI should be vanilla TypeScript or use a lightweight framework for faster development.
+```rust
+#[wasm_bindgen]
+pub fn serialize_config(json: &str) -> Result<Vec<u8>, JsValue>
+```
+Accepts a JSON string representation of `MacroConfig`, parses it, and returns CBOR bytes.
+
+```rust
+#[wasm_bindgen]
+pub fn deserialize_config(cbor: &[u8]) -> Result<String, JsValue>
+```
+Accepts CBOR bytes, deserializes to `MacroConfig`, and returns a JSON string.
+
+The JS side works with a plain JS object (converted to/from JSON); the WASM boundary only crosses primitive types (string/bytes), keeping the API simple.
+
+### 2.3 Build
+
+```bash
+cd webapp/wasm
+wasm-pack build --target web --out-dir ../pkg
+```
+
+---
+
+## 3. Data Model (JS Side)
+
+Mirrors the Rust structs as a plain JS object:
+
+```js
+{
+  name: "",
+  buttons: Array(10).fill({ display_text: "", display_icon: null, keystroke: [] }),
+  menu_encoder: { display_text: "", display_icon: null, keystroke_left: [], keystroke_right: [] },
+  encoders: Array(2).fill({ display_text: "", display_icon: null,
+                            keystroke_left: [], keystroke_right: [], keystroke_push: [] }),
+  leds: Array(8).fill({ r: 0, g: 0, b: 0 })
+}
+```
+
+`display_icon` is stored as a `Uint8Array` (raw bytes matching the `Vec<u8>` in the Rust struct).  
+`keystroke` fields are arrays of arrays of `KeyboardCode` discriminant strings (enum variant names).
+
+---
+
+## 4. Application Structure (`src/app.js`)
+
+### Modules / sections
+
+| Module | Responsibility |
+|---|---|
+| `state.js` | Single mutable `config` object; `onChange` callbacks |
+| `wasm.js` | Load WASM pkg, export `serialize` / `deserialize` |
+| `toolbar.js` | New / Import / Export buttons |
+| `overview.js` | Render `panel_overview.png` in header |
+| `editors.js` | Render all editor cards in the grid |
+| `icon-editor.js` | Icon editor popup |
+
+All modules are plain ES modules; no bundler required.
+
+---
+
+## 5. Page Layout (`index.html` / `style.css`)
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  [New Config]  [Import .cbor]  [Export .cbor]           │
+├─────────────────────────────────────────────────────────┤
+│  panel_overview.png  (static reference image)           │
+├────────────┬────────────┬────────────┬──────┬───────────┤
+│ Encoder 1  │ Encoder 2  │ Title/Name │      │ MenuEnc.  │
+├────────────┼────────────┼────────────┼──────┼───────────┤
+│ Button 1   │ Button 2   │ Button 3   │ Btn4 │ Button 5  │
+├────────────┼────────────┼────────────┼──────┼───────────┤
+│ Button 6   │ Button 7   │ Button 8   │ Btn9 │ Button 10 │
+└────────────┴────────────┴────────────┴──────┴───────────┘
+```
+
+The grid uses CSS Grid with 5 columns, matching the physical layout from `panel_overview.png`.
+
+The "Title" cell (row 1, col 3) edits `MacroConfig.name`.  
+The empty cell (row 1, col 4) is left blank to match the physical panel.
+
+---
+
+## 6. Editor Cards
+
+Each card is an HTML `<div class="editor-card">` containing:
+
+- **display_text** – `<input type="text">` label
+- **keystroke** – sequence-of-sequences editor:
+  - Each inner `Vec<KeyboardCode>` is a "chord" (simultaneously pressed keys)
+  - Chords are displayed in order; the user can add/remove chords and keys within each chord
+  - Keys are selected from a dropdown populated with all `KeyboardCode` variant names
+- **display_icon** – 22×22 preview rendered on a small `<canvas>` (or "no icon" placeholder)
+- **[Edit Icon]** button – opens the icon editor popup
+
+Encoder cards additionally show three keystroke sections: `Left`, `Right`, `Push` (or `Left`/`Right` only for the menu encoder).
+
+---
+
+## 7. Icon Editor Popup
+
+Opens as a modal overlay. Contains:
+
+### Canvas
+- 22×22 pixel canvas, scaled up (e.g. ×12 = 264px display size) for comfortable drawing
+- Default: filled black
+
+### Tools
+| Tool | Behaviour |
+|---|---|
+| Brush | Paints single pixels (or a square of `size×size` pixels) at the cursor position |
+| Text | Renders a string at a chosen position using a pixel font that fits 22px height |
+
+### Controls
+- **Color**: toggle Black / White (default: White)
+- **Size**: 1 / 2 / 3 px (applies to brush radius and text scale)
+- **Tool preview**: cursor shows a scaled preview of the brush footprint or text before clicking
+
+### Import from file
+- `<input type="file" accept="image/*">` — loads an image, converts to 22×22 B/W (thresholded), writes to canvas
+
+### Commit
+- **Save** – serializes canvas pixels to a `Uint8Array` (1 byte per pixel, row-major, 0=black 1=white or raw 1-bit packed matching the firmware expectation — confirm with firmware `update_display.rs`) and stores in `config`
+- **Cancel** – discards changes
+
+---
+
+## 8. Import / Export Flow
+
+### Export
+1. JS serializes current `config` object to JSON string
+2. Calls `wasm.serialize(jsonStr)` → `Uint8Array` of CBOR bytes
+3. Creates a `Blob` and triggers `<a download="config.cbor">` click
+
+### Import
+1. User picks a `.cbor` file via `<input type="file">`
+2. JS reads it as `ArrayBuffer`
+3. Calls `wasm.deserialize(bytes)` → JSON string
+4. Parses JSON into `config`, re-renders all editors
+
+---
+
+## 9. Implementation Steps
+
+1. **WASM crate** – create `webapp/wasm/Cargo.toml` and `lib.rs`; verify `wasm-pack build` succeeds
+2. **Scaffold** – `index.html` with toolbar, grid skeleton, and `<script type="module">` entry
+3. **State** – `state.js` with default empty config and update helpers
+4. **WASM bridge** – `wasm.js` loads `../pkg/wasm.js`, exports `serialize`/`deserialize`
+5. **Editor cards** – `editors.js` renders all 15 cells; text and keystroke inputs update state
+6. **Import/Export** – wire toolbar buttons to WASM bridge
+7. **Icon editor** – `icon-editor.js` with canvas, brush/text tools, color/size controls
+8. **Icon preview** – update card canvas on save
+9. **Styling** – `style.css` for grid layout, card appearance, modal overlay
+10. **Testing** – round-trip: create config → export CBOR → import CBOR → verify values restored
+
+---
+
+## 10. Open Questions / Decisions Needed
+
+- **Icon byte format**: The firmware's `update_display.rs` must be checked to confirm the exact pixel encoding expected in `display_icon` (e.g. 1-bit packed, 8-bit grayscale, etc.).
+- **Keystroke UI**: Decide on UX for building multi-chord sequences — e.g. "Add chord" button with key selectors, or a text-based shortcut notation that gets parsed.
+- **LED editor**: `LedConfig` (r/g/b per LED) is in the data model but not mentioned in requirements — include a simple color picker section or omit for now?
