@@ -129,20 +129,20 @@ mod app {
         display_alarm: hal::timer::Alarm0,
         keyboard_tick_alarm: hal::timer::Alarm1,
         menu_encoder: Rotary<
-            Pin<Gpio10, FunctionSio<SioInput>, PullNone>,
-            Pin<Gpio11, FunctionSio<SioInput>, PullNone>,
+            Pin<Gpio10, FunctionSio<SioInput>, PullUp>,
+            Pin<Gpio11, FunctionSio<SioInput>, PullUp>,
             DefaultPhase,
         >,
         menu_encoder_switch: Pin<Gpio12, FunctionSio<SioInput>, PullUp>,
         encoder1: Rotary<
-            Pin<Gpio13, FunctionSio<SioInput>, PullNone>,
-            Pin<Gpio14, FunctionSio<SioInput>, PullNone>,
+            Pin<Gpio13, FunctionSio<SioInput>, PullUp>,
+            Pin<Gpio14, FunctionSio<SioInput>, PullUp>,
             DefaultPhase,
         >,
         encoder1_switch: Pin<Gpio15, FunctionSio<SioInput>, PullUp>,
         encoder2: Rotary<
-            Pin<Gpio20, FunctionSio<SioInput>, PullNone>,
-            Pin<Gpio21, FunctionSio<SioInput>, PullNone>,
+            Pin<Gpio20, FunctionSio<SioInput>, PullUp>,
+            Pin<Gpio21, FunctionSio<SioInput>, PullUp>,
             DefaultPhase,
         >,
         encoder2_switch: Pin<Gpio22, FunctionSio<SioInput>, PullUp>,
@@ -261,30 +261,30 @@ mod app {
         let button9 = pins.gpio9.into_pull_up_input();
         // Rotary encoders
         // - Menu encoder
-        let gpio10 = pins.gpio10.into_floating_input();
+        let gpio10 = pins.gpio10.into_pull_up_input();
         gpio10.set_interrupt_enabled(EdgeHigh, true);
         gpio10.set_interrupt_enabled(EdgeLow, true);
-        let gpio11 = pins.gpio11.into_floating_input();
+        let gpio11 = pins.gpio11.into_pull_up_input();
         gpio11.set_interrupt_enabled(EdgeHigh, true);
         gpio11.set_interrupt_enabled(EdgeLow, true);
         let menu_encoder = Rotary::new(gpio10, gpio11);
         let menu_encoder_switch = pins.gpio12.into_pull_up_input();
         menu_encoder_switch.set_interrupt_enabled(EdgeLow, true);
         // - Encoder 1
-        let gpio13 = pins.gpio13.into_floating_input();
+        let gpio13 = pins.gpio13.into_pull_up_input();
         gpio13.set_interrupt_enabled(EdgeLow, true);
         gpio13.set_interrupt_enabled(EdgeHigh, true);
-        let gpio14 = pins.gpio14.into_floating_input();
+        let gpio14 = pins.gpio14.into_pull_up_input();
         gpio14.set_interrupt_enabled(EdgeHigh, true);
         gpio14.set_interrupt_enabled(EdgeLow, true);
         let encoder1 = Rotary::new(gpio13, gpio14);
         let encoder1_switch = pins.gpio15.into_pull_up_input();
         encoder1_switch.set_interrupt_enabled(EdgeLow, true);
         // - Encoder 2
-        let gpio20 = pins.gpio20.into_floating_input();
+        let gpio20 = pins.gpio20.into_pull_up_input();
         gpio20.set_interrupt_enabled(EdgeLow, true);
         gpio20.set_interrupt_enabled(EdgeHigh, true);
-        let gpio21 = pins.gpio21.into_floating_input();
+        let gpio21 = pins.gpio21.into_pull_up_input();
         gpio21.set_interrupt_enabled(EdgeHigh, true);
         gpio21.set_interrupt_enabled(EdgeLow, true);
         let encoder2 = Rotary::new(gpio20, gpio21);
