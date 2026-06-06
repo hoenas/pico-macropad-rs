@@ -5,6 +5,7 @@ extern crate alloc;
 pub use macropad_model::*;
 
 pub mod containers;
+pub mod encoder;
 pub mod dummy_time_source;
 pub mod example_config;
 pub mod read_config;

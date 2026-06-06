@@ -19,10 +19,10 @@ mod app {
     use fugit::MicrosDurationU32;
     use pico_macropad_rs::containers::{Encoders, MacroPadButtons};
     use pico_macropad_rs::dummy_time_source::DummyTimesource;
+    use pico_macropad_rs::encoder::RotaryEncoder;
     use pico_macropad_rs::read_config::{write_example_config_file, write_last_config};
     use pico_macropad_rs::update_display::CHARACTER_STYLE;
     use pico_macropad_rs::*;
-    use rotary_encoder_hal::DefaultPhase;
     use rp_pico::XOSC_CRYSTAL_FREQ;
     // The macro for our start-up function
 
@@ -83,7 +83,7 @@ mod app {
         text::{Alignment, Text},
     };
     use frunk::HList;
-    use rotary_encoder_hal::{Direction, Rotary};
+    use rotary_encoder_hal::Direction;
     use rp2040_hal::pio::SM0;
     use rp2040_hal::spi::Enabled;
     use rp2040_hal::timer::CountDown;
@@ -128,22 +128,19 @@ mod app {
     struct Local {
         display_alarm: hal::timer::Alarm0,
         keyboard_tick_alarm: hal::timer::Alarm1,
-        menu_encoder: Rotary<
+        menu_encoder: RotaryEncoder<
             Pin<Gpio10, FunctionSio<SioInput>, PullUp>,
             Pin<Gpio11, FunctionSio<SioInput>, PullUp>,
-            DefaultPhase,
         >,
         menu_encoder_switch: Pin<Gpio12, FunctionSio<SioInput>, PullUp>,
-        encoder1: Rotary<
+        encoder1: RotaryEncoder<
             Pin<Gpio13, FunctionSio<SioInput>, PullUp>,
             Pin<Gpio14, FunctionSio<SioInput>, PullUp>,
-            DefaultPhase,
         >,
         encoder1_switch: Pin<Gpio15, FunctionSio<SioInput>, PullUp>,
-        encoder2: Rotary<
+        encoder2: RotaryEncoder<
             Pin<Gpio20, FunctionSio<SioInput>, PullUp>,
             Pin<Gpio21, FunctionSio<SioInput>, PullUp>,
-            DefaultPhase,
         >,
         encoder2_switch: Pin<Gpio22, FunctionSio<SioInput>, PullUp>,
         display: GraphicsMode<
@@ -250,15 +247,25 @@ mod app {
         led.is_set_low().unwrap();
         // Buttons
         let button0 = pins.gpio0.into_pull_up_input();
+        button0.set_interrupt_enabled(EdgeLow, true);
         let button1 = pins.gpio1.into_pull_up_input();
+        button1.set_interrupt_enabled(EdgeLow, true);
         let button2 = pins.gpio2.into_pull_up_input();
+        button2.set_interrupt_enabled(EdgeLow, true);
         let button3 = pins.gpio3.into_pull_up_input();
+        button3.set_interrupt_enabled(EdgeLow, true);
         let button4 = pins.gpio4.into_pull_up_input();
+        button4.set_interrupt_enabled(EdgeLow, true);
         let button5 = pins.gpio5.into_pull_up_input();
+        button5.set_interrupt_enabled(EdgeLow, true);
         let button6 = pins.gpio6.into_pull_up_input();
+        button6.set_interrupt_enabled(EdgeLow, true);
         let button7 = pins.gpio7.into_pull_up_input();
+        button7.set_interrupt_enabled(EdgeLow, true);
         let button8 = pins.gpio8.into_pull_up_input();
+        button8.set_interrupt_enabled(EdgeLow, true);
         let button9 = pins.gpio9.into_pull_up_input();
+        button9.set_interrupt_enabled(EdgeLow, true);
         // Rotary encoders
         // - Menu encoder
         let gpio10 = pins.gpio10.into_pull_up_input();
@@ -267,7 +274,7 @@ mod app {
         let gpio11 = pins.gpio11.into_pull_up_input();
         gpio11.set_interrupt_enabled(EdgeHigh, true);
         gpio11.set_interrupt_enabled(EdgeLow, true);
-        let menu_encoder = Rotary::new(gpio10, gpio11);
+        let menu_encoder = RotaryEncoder::new(gpio10, gpio11);
         let menu_encoder_switch = pins.gpio12.into_pull_up_input();
         menu_encoder_switch.set_interrupt_enabled(EdgeLow, true);
         // - Encoder 1
@@ -277,7 +284,7 @@ mod app {
         let gpio14 = pins.gpio14.into_pull_up_input();
         gpio14.set_interrupt_enabled(EdgeHigh, true);
         gpio14.set_interrupt_enabled(EdgeLow, true);
-        let encoder1 = Rotary::new(gpio13, gpio14);
+        let encoder1 = RotaryEncoder::new(gpio13, gpio14);
         let encoder1_switch = pins.gpio15.into_pull_up_input();
         encoder1_switch.set_interrupt_enabled(EdgeLow, true);
         // - Encoder 2
@@ -287,7 +294,7 @@ mod app {
         let gpio21 = pins.gpio21.into_pull_up_input();
         gpio21.set_interrupt_enabled(EdgeHigh, true);
         gpio21.set_interrupt_enabled(EdgeLow, true);
-        let encoder2 = Rotary::new(gpio20, gpio21);
+        let encoder2 = RotaryEncoder::new(gpio20, gpio21);
         let encoder2_switch = pins.gpio22.into_pull_up_input();
         encoder2_switch.set_interrupt_enabled(EdgeLow, true);
         // Display
@@ -511,7 +518,7 @@ mod app {
     #[task(
         binds = TIMER_IRQ_0,
         shared = [timer, encoders, config, menu_mode, led],
-        local = [rotation_counter: usize = 0, display, menu, ticks_since_menu_state_change, display_update_interval, file_names,display_alarm, sd_volume_mgr, rgb_leds],
+        local = [rotation_counter: usize = 0, display, menu, ticks_since_menu_state_change, display_update_interval, file_names, display_alarm, sd_volume_mgr, rgb_leds, last_leds: [RGB8; NUM_LEDS] = [RGB8 { r: 0, g: 0, b: 0 }; NUM_LEDS]],
     )]
     fn display_update(mut c: display_update::Context) {
         c.shared.led.lock(|l| l.set_high().unwrap());
@@ -564,6 +571,7 @@ mod app {
             c.local.display.clear();
             menu.update(c.local.display);
             menu.draw(c.local.display);
+            c.local.display.flush().unwrap();
         } else {
             *c.local.rotation_counter += 1;
             c.shared.config.lock(|config| {
@@ -586,7 +594,6 @@ mod app {
             });
             c.local.rgb_leds.write(data.iter().cloned()).unwrap();
         }
-        c.local.display.flush().unwrap();
         c.local.display_alarm.clear_interrupt();
         c.local.display_alarm.schedule(DISPLAY_UPDATE).unwrap();
     }
@@ -695,55 +702,34 @@ mod app {
         shared = [led, encoders, timer, buttons],
         local = [menu_encoder, menu_encoder_switch, encoder1, encoder1_switch, encoder2, encoder2_switch, button0, button1, button2, button3, button4, button5, button6, button7, button8, button9],
     )]
-    fn encoder_update(c: encoder_update::Context) {
+    fn encoder_update(mut c: encoder_update::Context) {
         // Check encoders
         // - menu_encoder
         let menu_encoder_increment = match c.local.menu_encoder.update() {
-            Ok(direction) => {
-                if direction == Direction::Clockwise {
-                    -1
-                } else if direction == Direction::CounterClockwise {
-                    1
-                } else {
-                    0
-                }
-            }
-            Err(_) => 0,
+            Direction::Clockwise => -1,
+            Direction::CounterClockwise => 1,
+            Direction::None => 0,
         };
         let menu_encoder_switch_value = c.local.menu_encoder_switch.is_low().unwrap();
 
         // - encoder1
         let encoder1_increment = match c.local.encoder1.update() {
-            Ok(direction) => {
-                if direction == Direction::Clockwise {
-                    -1
-                } else if direction == Direction::CounterClockwise {
-                    1
-                } else {
-                    0
-                }
-            }
-            Err(_) => 0,
+            Direction::Clockwise => -1,
+            Direction::CounterClockwise => 1,
+            Direction::None => 0,
         };
         let encoder1_switch_value = c.local.encoder1_switch.is_low().unwrap();
         // - encoder2
         let encoder2_increment = match c.local.encoder2.update() {
-            Ok(direction) => {
-                if direction == Direction::Clockwise {
-                    -1
-                } else if direction == Direction::CounterClockwise {
-                    1
-                } else {
-                    0
-                }
-            }
-            Err(_) => 0,
+            Direction::Clockwise => -1,
+            Direction::CounterClockwise => 1,
+            Direction::None => 0,
         };
         let encoder2_switch_value = c.local.encoder2_switch.is_low().unwrap();
 
         // Write values
 
-        (c.shared.encoders, c.shared.buttons, c.shared.timer).lock(|encoders, buttons, timer| {
+        (c.shared.encoders, c.shared.buttons).lock(|encoders, buttons| {
             // - menu_encoder
             let menu_encoder_value = encoders.menu_encoder.value as isize + menu_encoder_increment;
             encoders.menu_encoder.value = if menu_encoder_value < 0 {
@@ -786,23 +772,18 @@ mod app {
             buttons.pads[7].update(c.local.button7.is_low().unwrap());
             buttons.pads[8].update(c.local.button8.is_low().unwrap());
             buttons.pads[9].update(c.local.button9.is_low().unwrap());
-            // Debounce push buttons
-            if encoders.menu_encoder.value_changed
-                || encoders.encoder1.value_changed
-                || encoders.encoder2.value_changed
-                || buttons.any_button_changed()
-            {
-                timer.delay_ms(25u32);
-            }
-
-            // Debounce rotary encoders
-            if encoders.menu_encoder.delta != 0
-                || encoders.encoder1.delta != 0
-                || encoders.encoder2.delta != 0
-            {
-                timer.delay_us(100u32);
-            }
         });
+        // Clear interrupts for all GPIOs
+        c.local.button0.clear_interrupt(EdgeLow);
+        c.local.button1.clear_interrupt(EdgeLow);
+        c.local.button2.clear_interrupt(EdgeLow);
+        c.local.button3.clear_interrupt(EdgeLow);
+        c.local.button4.clear_interrupt(EdgeLow);
+        c.local.button5.clear_interrupt(EdgeLow);
+        c.local.button6.clear_interrupt(EdgeLow);
+        c.local.button7.clear_interrupt(EdgeLow);
+        c.local.button8.clear_interrupt(EdgeLow);
+        c.local.button9.clear_interrupt(EdgeLow);
     }
 
     #[task(
