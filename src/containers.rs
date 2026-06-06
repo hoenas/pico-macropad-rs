@@ -14,7 +14,6 @@ impl Encoder {
     }
 }
 
-
 #[derive(Default)]
 pub struct Encoders {
     pub menu_encoder: Encoder,
@@ -38,7 +37,6 @@ impl MacroPadButton {
         }
     }
 }
-
 
 #[derive(Default)]
 pub struct MacroPadButtons {

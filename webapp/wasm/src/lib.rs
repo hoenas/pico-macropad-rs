@@ -10,8 +10,8 @@ pub fn default_config() -> Result<JsValue, JsValue> {
 
 #[wasm_bindgen]
 pub fn import_config_from_cbor(bytes: &[u8]) -> Result<JsValue, JsValue> {
-    let config: MacroConfig = ciborium::from_reader(bytes)
-        .map_err(|err| JsValue::from_str(&err.to_string()))?;
+    let config: MacroConfig =
+        ciborium::from_reader(bytes).map_err(|err| JsValue::from_str(&err.to_string()))?;
     to_value(&config).map_err(|err| JsValue::from_str(&err.to_string()))
 }
 
@@ -20,7 +20,6 @@ pub fn export_config_to_cbor(config: &JsValue) -> Result<Vec<u8>, JsValue> {
     let config: MacroConfig =
         from_value(config.clone()).map_err(|err| JsValue::from_str(&err.to_string()))?;
     let mut buf = Vec::new();
-    ciborium::into_writer(&config, &mut buf)
-        .map_err(|err| JsValue::from_str(&err.to_string()))?;
+    ciborium::into_writer(&config, &mut buf).map_err(|err| JsValue::from_str(&err.to_string()))?;
     Ok(buf)
 }
