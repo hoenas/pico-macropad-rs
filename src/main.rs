@@ -529,6 +529,7 @@ mod app {
         c.shared.encoders.lock(|encoders| {
             menu_button_pressed = encoders.menu_encoder.button;
             menu_button_state_changed = encoders.menu_encoder.value_changed;
+            encoders.menu_encoder.value_changed = false;
         });
         // Switch to menu mode if we are currently not in menu mode and encoder0 button is pressed
         if !menu_mode && menu_button_pressed && menu_button_state_changed {
@@ -736,8 +737,9 @@ mod app {
             } else {
                 menu_encoder_value.try_into().unwrap()
             };
-            encoders.menu_encoder.value_changed =
-                encoders.menu_encoder.button != menu_encoder_switch_value;
+            if encoders.menu_encoder.button != menu_encoder_switch_value {
+                encoders.menu_encoder.value_changed = true;
+            }
             encoders.menu_encoder.delta += menu_encoder_increment;
             encoders.menu_encoder.button = menu_encoder_switch_value;
             // - encoder1
@@ -747,7 +749,9 @@ mod app {
             } else {
                 encoder1_value.try_into().unwrap()
             };
-            encoders.encoder1.value_changed = encoders.encoder1.button != encoder1_switch_value;
+            if encoders.encoder1.button != encoder1_switch_value {
+                encoders.encoder1.value_changed = true;
+            }
             encoders.encoder1.delta += encoder1_increment;
             encoders.encoder1.button = encoder1_switch_value;
             // - encoder2
@@ -757,7 +761,9 @@ mod app {
             } else {
                 encoder2_value.try_into().unwrap()
             };
-            encoders.encoder2.value_changed = encoders.encoder2.button != encoder2_switch_value;
+            if encoders.encoder2.button != encoder2_switch_value {
+                encoders.encoder2.value_changed = true;
+            }
             encoders.encoder2.delta += encoder2_increment;
             encoders.encoder2.button = encoder2_switch_value;
             // - Buttons
